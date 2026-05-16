@@ -32,6 +32,8 @@ from pdf_processor import process_document
 from rag_pipeline import RAGPipeline
 from mailer import init_mail, send_verification_email, send_reset_email
 
+from storage import save_file, get_file_path, delete_file, get_file_size
+
 load_dotenv()
 init_db()
 
@@ -230,27 +232,27 @@ def upload(current_user):
 
         orig_name = file.filename
         filename  = f"u{user_id}_{secure_filename(orig_name)}"
-        filepath  = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        file.save(filepath)
-        file_size = os.path.getsize(filepath)
         file_type = os.path.splitext(orig_name)[1].lower().lstrip(".")
 
+        # Save to storage (local or Cloudinary)
+        identifier = save_file(file, filename)
+        file_size  = get_file_size(identifier)
+
+        # Get a local path for processing
+        local_path, is_temp = get_file_path(identifier)
         try:
-            chunks, pages, chunk_count = process_document(filepath, orig_name)
-            # Extract full text for full-text search
+            chunks, pages, chunk_count = process_document(local_path, orig_name)
             full_text = " ".join(c["text"] for c in chunks)[:500000]
 
-            # Check if a version already exists
             from database import get_latest_version
             existing_version = get_latest_version(orig_name, user_id)
             version = existing_version + 1 if existing_version > 0 else 1
 
-            # If re-uploading, remove old embeddings first
             if existing_version > 0:
                 rag.remove_document(user_id, orig_name)
 
             rag.add_chunks(user_id, chunks)
-            add_document(user_id, filename, orig_name, file_size, file_type, pages, chunk_count,
+            add_document(user_id, identifier, orig_name, file_size, file_type, pages, chunk_count,
                          folder_id=folder_id, full_text=full_text, version=version)
             results.append({"file": orig_name, "chunks": chunk_count, "pages": pages, "version": version})
             from database import log_activity
@@ -258,6 +260,9 @@ def upload(current_user):
         except Exception as e:
             import traceback; traceback.print_exc()
             results.append({"file": orig_name, "error": str(e)})
+        finally:
+            if is_temp and os.path.exists(local_path):
+                os.remove(local_path)
 
     return jsonify({"results": results, "documents": get_user_documents(user_id)})
 
@@ -270,12 +275,9 @@ def delete_doc(current_user, doc_id):
         return jsonify({"error": "Document not found"}), 404
     # Remove from vector store
     rag.remove_document(current_user["id"], doc["orig_name"])
-    # Purge any other stale vectors while we're at it
     rag.purge_stale_vectors(current_user["id"])
-    # Remove file
-    fp = os.path.join(app.config["UPLOAD_FOLDER"], doc["filename"])
-    if os.path.exists(fp):
-        os.remove(fp)
+    # Delete from storage (local or Cloudinary)
+    delete_file(doc["filename"])
     from database import log_activity
     log_activity(current_user["id"], "deleted_document", "document", doc_id, doc["orig_name"])
     return jsonify({"message": "Deleted"})

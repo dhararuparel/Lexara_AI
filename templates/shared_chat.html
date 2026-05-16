@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{{ title }} — Lexara AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--purple:#8b5cf6;--cyan:#22d3ee;--text:#f8fafc;--text2:#94a3b8;--text3:#64748b;--grad:linear-gradient(135deg,#8b5cf6,#22d3ee)}
+    body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;padding:2rem 1rem}
+    .container{max-width:760px;margin:0 auto}
+    .header{display:flex;align-items:center;gap:.75rem;margin-bottom:2rem;padding-bottom:1rem;border-bottom:1px solid var(--border)}
+    .logo{width:36px;height:36px;border-radius:10px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0}
+    .header-text h1{font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700}
+    .header-text p{font-size:.78rem;color:var(--text3);margin-top:.15rem}
+    .badge{font-size:.68rem;padding:.2rem .55rem;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.25);border-radius:999px;color:var(--purple);margin-left:auto;flex-shrink:0}
+    .messages{display:flex;flex-direction:column;gap:1.25rem}
+    .msg{display:flex;gap:.75rem;align-items:flex-start}
+    .msg.user{flex-direction:row-reverse}
+    .av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;font-weight:700;color:#fff}
+    .msg.user .av{background:linear-gradient(135deg,#7c3aed,#8b5cf6)}
+    .msg.bot  .av{background:linear-gradient(135deg,#0891b2,#22d3ee)}
+    .bub{max-width:78%;padding:.85rem 1.1rem;border-radius:16px;font-size:.88rem;line-height:1.75;word-break:break-word}
+    .msg.user .bub{background:linear-gradient(135deg,#7c3aed,#8b5cf6);color:#fff;border-bottom-right-radius:3px}
+    .msg.bot  .bub{background:var(--card);border:1px solid var(--border);border-bottom-left-radius:3px}
+    .md-content h1,.md-content h2,.md-content h3{margin:.6rem 0 .3rem;font-weight:600}
+    .md-content p{margin:.35rem 0;color:var(--text2)}
+    .md-content ul,.md-content ol{padding-left:1.2rem;margin:.35rem 0}
+    .md-content li{margin:.15rem 0;color:var(--text2)}
+    .md-content strong{color:var(--text)}
+    .md-content code{background:rgba(139,92,246,.12);border-radius:4px;padding:.05rem .3rem;font-size:.78rem;font-family:monospace;color:#a78bfa}
+    .md-content pre{background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;overflow-x:auto;margin:.4rem 0}
+    .md-content pre code{background:none;padding:0}
+    .footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--border);text-align:center;font-size:.75rem;color:var(--text3)}
+    .footer a{color:var(--purple);text-decoration:none}
+    .footer a:hover{text-decoration:underline}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo">🧠</div>
+    <div class="header-text">
+      <h1>{{ title }}</h1>
+      <p>Shared conversation from Lexara AI</p>
+    </div>
+    <span class="badge">Read-only</span>
+  </div>
+
+  <div class="messages" id="messages"></div>
+
+  <div class="footer">
+    Powered by <a href="/">Lexara AI</a> · This is a read-only shared conversation
+  </div>
+</div>
+
+<script>
+marked.setOptions({breaks:true,gfm:true});
+const messages = {{ messages | tojson }};
+const container = document.getElementById('messages');
+messages.forEach(m => {
+  const row = document.createElement('div');
+  row.className = 'msg ' + (m.role === 'user' ? 'user' : 'bot');
+  const av = document.createElement('div');
+  av.className = 'av';
+  av.textContent = m.role === 'user' ? '👤' : '🧠';
+  const bub = document.createElement('div');
+  bub.className = 'bub';
+  if (m.role === 'user') {
+    bub.textContent = m.content;
+  } else {
+    const md = document.createElement('div');
+    md.className = 'md-content';
+    md.innerHTML = marked.parse(m.content);
+    bub.appendChild(md);
+  }
+  row.appendChild(av);
+  row.appendChild(bub);
+  container.appendChild(row);
+});
+document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+</script>
+</body>
+</html>

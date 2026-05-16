@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Lexara Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--purple:#8b5cf6;--cyan:#22d3ee;--text:#f8fafc;--text2:#94a3b8;--text3:#64748b;--r:12px}
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+    .shell{display:flex;min-height:100vh}
+    .sidebar{width:200px;background:#111827;border-right:1px solid var(--border);padding:1.5rem 1rem;display:flex;flex-direction:column;gap:.5rem;flex-shrink:0}
+    .sb-brand{font-size:1rem;font-weight:700;color:var(--purple);margin-bottom:1rem;padding:.5rem}
+    .sb-link{display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;border-radius:8px;color:var(--text2);cursor:pointer;font-size:.85rem;border:none;background:none;width:100%;text-align:left;transition:all .15s}
+    .sb-link:hover,.sb-link.active{background:rgba(139,92,246,.15);color:var(--purple)}
+    .main{flex:1;padding:2rem;overflow-y:auto}
+    .page{display:none}.page.active{display:block}
+    h1{font-size:1.4rem;font-weight:700;margin-bottom:1.5rem}
+    .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem}
+    .stat-box{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.25rem;text-align:center}
+    .stat-val{font-size:2rem;font-weight:700;color:var(--purple)}
+    .stat-lbl{font-size:.75rem;color:var(--text3);margin-top:.25rem}
+    table{width:100%;border-collapse:collapse;background:var(--card);border-radius:var(--r);overflow:hidden}
+    th{background:#243044;padding:.65rem 1rem;text-align:left;font-size:.75rem;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
+    td{padding:.6rem 1rem;font-size:.82rem;border-bottom:1px solid var(--border);color:var(--text2)}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(139,92,246,.05)}
+    .tier-badge{padding:.15rem .5rem;border-radius:999px;font-size:.68rem;font-weight:700;text-transform:uppercase}
+    .tier-free{background:rgba(100,116,139,.2);color:var(--text2)}
+    .tier-pro{background:rgba(139,92,246,.2);color:#a78bfa}
+    .tier-enterprise{background:rgba(34,211,238,.15);color:var(--cyan)}
+    .btn{padding:.35rem .75rem;border-radius:7px;border:none;cursor:pointer;font-size:.75rem;font-family:inherit;transition:all .15s}
+    .btn-purple{background:var(--purple);color:#fff}.btn-purple:hover{opacity:.85}
+    .btn-red{background:#ef4444;color:#fff}.btn-red:hover{opacity:.85}
+    .btn-sm{padding:.2rem .5rem;font-size:.7rem}
+    select.tier-sel{background:#243044;border:1px solid var(--border);color:var(--text);border-radius:6px;padding:.2rem .4rem;font-size:.75rem;font-family:inherit}
+    .search-bar{display:flex;gap:.5rem;margin-bottom:1rem}
+    .search-bar input{flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;color:var(--text);font-size:.85rem;font-family:inherit;outline:none}
+    .search-bar input:focus{border-color:var(--purple)}
+    .alert{padding:.6rem 1rem;border-radius:8px;font-size:.82rem;margin-bottom:1rem}
+    .alert-success{background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);color:#34d399}
+    .alert-error{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#f87171}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sb-brand">⚡ Admin</div>
+    <button class="sb-link active" onclick="showPage('overview',this)">📊 Overview</button>
+    <button class="sb-link" onclick="showPage('users',this)">👥 Users</button>
+    <button class="sb-link" onclick="showPage('api',this)">🔑 API Keys</button>
+    <div style="flex:1"></div>
+    <button class="sb-link" onclick="location.href='/'">← Back to App</button>
+  </nav>
+
+  <main class="main">
+    <div id="alertBox" style="display:none" class="alert"></div>
+
+    <!-- Overview -->
+    <div class="page active" id="page-overview">
+      <h1>Platform Overview</h1>
+      <div class="stats-row">
+        <div class="stat-box"><div class="stat-val" id="aTotal">—</div><div class="stat-lbl">Total Users</div></div>
+        <div class="stat-box"><div class="stat-val" id="aDocs">—</div><div class="stat-lbl">Documents</div></div>
+        <div class="stat-box"><div class="stat-val" id="aQueries">—</div><div class="stat-lbl">Total Queries</div></div>
+        <div class="stat-box"><div class="stat-val" id="aPro">—</div><div class="stat-lbl">Pro+ Users</div></div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.25rem">
+        <div style="font-size:.8rem;font-weight:600;color:var(--text2);margin-bottom:.75rem;text-transform:uppercase;letter-spacing:.06em">Tier Distribution</div>
+        <div id="tierDist" style="display:flex;gap:1rem;flex-wrap:wrap"></div>
+      </div>
+    </div>
+
+    <!-- Users -->
+    <div class="page" id="page-users">
+      <h1>User Management</h1>
+      <div class="search-bar">
+        <input type="text" id="userSearch" placeholder="Search by name or email…" oninput="filterUsers(this.value)"/>
+        <button class="btn btn-purple" onclick="loadUsers()">↻ Refresh</button>
+      </div>
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Tier</th><th>Docs</th><th>Chats</th><th>Joined</th><th>Actions</th></tr></thead>
+        <tbody id="usersTable"></tbody>
+      </table>
+    </div>
+
+    <!-- API Keys -->
+    <div class="page" id="page-api">
+      <h1>API Key Overview</h1>
+      <p style="color:var(--text3);font-size:.85rem;margin-bottom:1.5rem">Users manage their own API keys from their profile. Pro and Enterprise users can generate keys to access the REST API.</p>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.25rem">
+        <div style="font-size:.85rem;font-weight:600;margin-bottom:.75rem">REST API Endpoints</div>
+        <div style="display:flex;flex-direction:column;gap:.5rem;font-size:.8rem;color:var(--text2)">
+          <div><code style="color:var(--cyan)">POST /v1/ask</code> — Ask a question (returns JSON answer + sources)</div>
+          <div><code style="color:var(--cyan)">GET /v1/documents</code> — List documents</div>
+          <div style="margin-top:.5rem;color:var(--text3)">Pass your key as: <code style="color:var(--purple)">X-API-Key: lx_your_key_here</code></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+let allUsers = [];
+
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sb-link').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'overview') loadStats();
+  if (name === 'users') loadUsers();
+}
+
+function showAlert(msg, type='success') {
+  const box = document.getElementById('alertBox');
+  box.textContent = msg;
+  box.className = 'alert alert-' + type;
+  box.style.display = 'block';
+  setTimeout(() => box.style.display = 'none', 3000);
+}
+
+async function loadStats() {
+  const r = await fetch('/api/admin/stats', {credentials:'include'});
+  const d = await r.json();
+  document.getElementById('aTotal').textContent = d.total_users;
+  document.getElementById('aDocs').textContent = d.total_docs;
+  document.getElementById('aQueries').textContent = d.total_queries;
+  const pro = (d.tiers?.pro || 0) + (d.tiers?.enterprise || 0);
+  document.getElementById('aPro').textContent = pro;
+  const dist = document.getElementById('tierDist');
+  dist.innerHTML = Object.entries(d.tiers || {}).map(([t,c]) =>
+    `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.5rem .9rem;font-size:.82rem">
+      <span class="tier-badge tier-${t}">${t}</span>
+      <strong style="margin-left:.5rem">${c}</strong> users
+    </div>`
+  ).join('');
+}
+
+async function loadUsers() {
+  const r = await fetch('/api/admin/users?limit=200', {credentials:'include'});
+  const d = await r.json();
+  allUsers = d.users || [];
+  renderUsers(allUsers);
+}
+
+function filterUsers(q) {
+  const filtered = allUsers.filter(u =>
+    u.name.toLowerCase().includes(q.toLowerCase()) ||
+    u.email.toLowerCase().includes(q.toLowerCase())
+  );
+  renderUsers(filtered);
+}
+
+function renderUsers(users) {
+  const tbody = document.getElementById('usersTable');
+  if (!users.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text3)">No users found</td></tr>'; return; }
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td>${u.id}</td>
+      <td>${u.name}</td>
+      <td>${u.email}</td>
+      <td>
+        <select class="tier-sel" onchange="setTier(${u.id}, this.value)">
+          <option value="free" ${u.tier==='free'?'selected':''}>Free</option>
+          <option value="pro" ${u.tier==='pro'?'selected':''}>Pro</option>
+          <option value="enterprise" ${u.tier==='enterprise'?'selected':''}>Enterprise</option>
+        </select>
+      </td>
+      <td>${u.doc_count}</td>
+      <td>${u.chat_count}</td>
+      <td>${u.created_at ? u.created_at.slice(0,10) : '—'}</td>
+      <td>
+        <button class="btn btn-red btn-sm" onclick="deleteUser(${u.id},'${u.email}')">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function setTier(uid, tier) {
+  const r = await fetch(`/api/admin/users/${uid}/tier`, {
+    method:'POST', credentials:'include',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({tier})
+  });
+  const d = await r.json();
+  showAlert(r.ok ? d.message : d.error, r.ok ? 'success' : 'error');
+}
+
+async function deleteUser(uid, email) {
+  if (!confirm(`Delete user ${email}? This is permanent.`)) return;
+  const r = await fetch(`/api/admin/users/${uid}`, {method:'DELETE', credentials:'include'});
+  const d = await r.json();
+  showAlert(r.ok ? d.message : d.error, r.ok ? 'success' : 'error');
+  if (r.ok) loadUsers();
+}
+
+loadStats();
+</script>
+</body>
+</html>

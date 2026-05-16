@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Workspace Invitation — Lexara AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/login.css"/>
+  <style>
+    body { margin:0; background:#0f172a; font-family:Inter,sans-serif; }
+    .invite-card {
+      width:100%; max-width:440px;
+      background:#111827; border:1px solid #334155;
+      border-radius:16px; padding:2rem;
+      box-shadow:0 8px 32px rgba(0,0,0,.5);
+    }
+    .invite-icon {
+      width:56px; height:56px; border-radius:14px;
+      background:linear-gradient(135deg,#7c3aed,#8b5cf6);
+      display:flex; align-items:center; justify-content:center;
+      font-size:1.6rem; margin:0 auto .75rem;
+    }
+    .invite-title { font-family:'Playfair Display',serif; font-size:1.3rem; color:#f8fafc; text-align:center; margin:0; }
+    .invite-sub   { color:#64748b; font-size:.82rem; text-align:center; margin:.3rem 0 0; }
+    .detail-box {
+      margin:1.25rem 0; padding:1rem;
+      background:rgba(139,92,246,.06); border:1px solid rgba(139,92,246,.18);
+      border-radius:10px;
+    }
+    .detail-row { display:flex; justify-content:space-between; align-items:center; font-size:.82rem; padding:.25rem 0; }
+    .detail-label { color:#64748b; }
+    .detail-val   { color:#f8fafc; font-weight:500; }
+    .role-badge {
+      display:inline-block; padding:.15rem .55rem;
+      background:rgba(34,211,238,.1); border:1px solid rgba(34,211,238,.25);
+      border-radius:20px; color:#22d3ee; font-size:.75rem; font-weight:600; text-transform:capitalize;
+    }
+    .accept-btn {
+      width:100%; padding:.75rem;
+      background:linear-gradient(135deg,#7c3aed,#8b5cf6);
+      color:#fff; border:none; border-radius:10px;
+      font-size:.95rem; font-weight:600; cursor:pointer;
+      font-family:inherit; transition:opacity .2s;
+    }
+    .accept-btn:hover  { opacity:.9; }
+    .accept-btn:disabled { opacity:.45; cursor:not-allowed; }
+    .warn-box {
+      margin-top:1rem; padding:.85rem;
+      background:rgba(234,179,8,.07); border:1px solid rgba(234,179,8,.25);
+      border-radius:10px; font-size:.8rem; color:#fde047; line-height:1.5;
+    }
+    .warn-box a { color:#a78bfa; text-decoration:none; font-weight:600; }
+    .alert-box {
+      padding:.6rem .85rem; border-radius:8px;
+      font-size:.8rem; margin-bottom:1rem; display:none;
+    }
+  </style>
+</head>
+<body>
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem">
+  <div class="invite-card">
+    <div class="invite-icon">🏢</div>
+    <h1 class="invite-title">Workspace Invitation</h1>
+    <p class="invite-sub">You've been invited to collaborate on Lexara AI</p>
+
+    <div id="alertBox" class="alert-box"></div>
+    <div id="inviteDetails" style="margin:1.25rem 0;text-align:center;color:#94a3b8;font-size:.84rem">
+      Loading invitation…
+    </div>
+
+    <button class="accept-btn" id="acceptBtn" onclick="acceptInvite()" disabled>
+      Accept Invitation
+    </button>
+
+    <div class="warn-box" id="warnBox" style="display:none"></div>
+
+    <p style="text-align:center;margin-top:1rem;font-size:.78rem;color:#64748b">
+      <a href="/" style="color:#8b5cf6;text-decoration:none">Go to Dashboard</a>
+    </p>
+  </div>
+</div>
+
+<script>
+const TOKEN = {{ token | tojson }};
+let inviteEmail = null;
+
+async function loadInviteDetails() {
+  if (!TOKEN) { showAlert('Invalid invitation link — no token found.', 'error'); return; }
+
+  let invite;
+  try {
+    const url = `/api/workspace-invite/info?token=${encodeURIComponent(TOKEN)}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (!r.ok) {
+      showAlert(d.error || 'Invitation not found or already accepted.', 'error');
+      // Show token prefix for debugging
+      document.getElementById('inviteDetails').innerHTML =
+        `<p style="color:#64748b;font-size:.72rem">Token: ${escHtml(TOKEN.slice(0,20))}…</p>`;
+      return;
+    }
+    invite = d;
+  } catch(e) {
+    showAlert('Could not load invitation details. Is the server running?', 'error');
+    return;
+  }
+
+  inviteEmail = invite.email;
+
+  document.getElementById('inviteDetails').innerHTML = `
+    <div class="detail-box">
+      <div class="detail-row">
+        <span class="detail-label">Workspace</span>
+        <span class="detail-val">🏢 ${escHtml(invite.workspace_name)}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Invited by</span>
+        <span class="detail-val">${escHtml(invite.inviter_name)}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Invited email</span>
+        <span class="detail-val">${escHtml(invite.email)}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Role</span>
+        <span class="role-badge">${escHtml(invite.role)}</span>
+      </div>
+    </div>`;
+
+  // Check who is currently logged in
+  let currentEmail = null;
+  try {
+    const me = await fetch('/api/auth/me', {credentials: 'include'});
+    if (me.ok) {
+      const md = await me.json();
+      currentEmail = md.user?.email?.toLowerCase();
+    }
+  } catch(e) {}
+
+  const invitedLower = invite.email.toLowerCase();
+
+  if (!currentEmail) {
+    // Not logged in at all — send to login with ?next= back here
+    showWarn(
+      `This invitation is for <strong>${escHtml(invite.email)}</strong>.<br>
+       Please <a href="/login?next=${encodeURIComponent(window.location.href)}">sign in with that account</a> to accept.`
+    );
+    document.getElementById('acceptBtn').disabled = true;
+    return;
+  }
+
+  if (currentEmail !== invitedLower) {
+    // Wrong account logged in
+    showWarn(
+      `You're signed in as <strong>${escHtml(currentEmail)}</strong>, but this invitation is for
+       <strong>${escHtml(invite.email)}</strong>.<br><br>
+       <a href="#" onclick="switchAccount()">Sign out and sign in with the correct account →</a>`
+    );
+    document.getElementById('acceptBtn').disabled = true;
+    return;
+  }
+
+  // Correct account — enable accept
+  document.getElementById('acceptBtn').disabled = false;
+}
+
+async function switchAccount() {
+  // Log out current session, then redirect to login with ?next= back here
+  await fetch('/api/auth/logout', {method: 'POST', credentials: 'include'});
+  window.location.href = `/login?next=${encodeURIComponent(window.location.href)}`;
+}
+
+async function acceptInvite() {
+  const btn = document.getElementById('acceptBtn');
+  btn.textContent = 'Accepting…'; btn.disabled = true;
+
+  const r = await fetch('/api/workspace-invite/accept', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    credentials: 'include',
+    body: JSON.stringify({token: TOKEN})
+  });
+  const d = await r.json();
+
+  if (r.status === 401) {
+    const returnUrl = encodeURIComponent(window.location.href);
+    showWarn(`Please <a href="/login?next=${returnUrl}">sign in</a> to accept this invitation.`);
+    btn.textContent = 'Accept Invitation'; btn.disabled = false;
+    return;
+  }
+
+  if (r.status === 403) {
+    showWarn(
+      `You're signed in with the wrong account.<br>
+       <a href="#" onclick="switchAccount()">Sign out and use the correct account →</a>`
+    );
+    btn.textContent = 'Accept Invitation'; btn.disabled = false;
+    return;
+  }
+
+  if (!r.ok) {
+    showAlert(d.error || 'Failed to accept invitation.', 'error');
+    btn.textContent = 'Accept Invitation'; btn.disabled = false;
+    return;
+  }
+
+  showAlert(`You've joined "${escHtml(d.workspace_name)}" successfully!`, 'success');
+  btn.textContent = '✓ Joined';
+  document.getElementById('warnBox').style.display = 'none';
+  setTimeout(() => window.location.href = '/', 1800);
+}
+
+function showAlert(msg, type) {
+  const el = document.getElementById('alertBox');
+  el.innerHTML = msg; el.style.display = 'block';
+  const styles = {
+    error:   ['rgba(220,38,38,.1)',  '1px solid rgba(220,38,38,.3)',  '#fca5a5'],
+    success: ['rgba(34,197,94,.1)',  '1px solid rgba(34,197,94,.3)',  '#86efac'],
+  };
+  const [bg, border, color] = styles[type] || styles.error;
+  el.style.background = bg; el.style.border = border; el.style.color = color;
+}
+
+function showWarn(html) {
+  const el = document.getElementById('warnBox');
+  el.innerHTML = html; el.style.display = 'block';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+loadInviteDetails();
+</script>
+</body>
+</html>

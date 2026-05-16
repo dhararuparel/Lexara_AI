@@ -1,0 +1,68 @@
+Chat & AI
+
+Voice input — speak your question, get a spoken answer (Web Speech API)
+Chat branching — fork a conversation from any message and explore a different direction
+Answer regeneration — "try again" button on any bot response
+Saved prompts library — save frequently used questions as templates
+Chat sharing — generate a public read-only link to share a conversation
+Multi-language UI — auto-detect and respond in the user's language
+Document Management
+
+Google Drive / Dropbox import — connect and sync documents directly
+Document collections — group related docs and query only within a collection
+Auto-tagging — AI generates tags on upload automatically
+Document expiry — set a date after which a document is auto-removed
+Duplicate detection — warn when uploading a file that already exists
+User & Auth
+
+Team workspaces — shared document library with role-based access
+Comments on answers — annotate specific AI responses
+@mention documents in chat — @filename to scope a query to one doc
+Activity feed — see what teammates uploaded or asked
+Analytics & Insights
+
+Usage dashboard — queries per day, most-asked topics, top documents
+Document coverage heatmap — which pages get referenced most
+Answer quality tracking — aggregate thumbs up/down over time
+Export analytics as CSV
+Monetization / Client-ready
+
+Stripe billing — free/pro/enterprise tiers with usage limits
+API key management — let clients query via REST API
+White-label mode — custom logo, colors, domain
+Admin panel — manage all users, usage, billing
+Integrations
+
+Slack bot — ask Lexara from a Slack channel
+Notion page ingestion — paste a Notion URL and index it
+Zapier/webhook — trigger actions when a document is uploaded or a query is made
+Chrome extension — clip any webpage directly into your knowledge base
+The highest-impact ones to build next for a client-ready product would be: 
+email verification + password reset, Stripe billing, team workspaces, and voice input — 
+those cover the biggest gaps between a demo and a real product.
+
+
+1. Email (for verification + password reset)
+
+You need a Gmail App Password (not your regular Gmail password):
+
+Go to myaccount.google.com/security
+Enable 2-Step Verification if not already on
+Go to myaccount.google.com/apppasswords
+Select app: Mail, device: Windows Computer → Generate
+Copy the 16-character password shown
+Then give me:
+
+Your Gmail address
+The 16-char app password
+2. Microsoft OAuth (optional — only if you want "Sign in with Microsoft")
+
+Go to portal.azure.com
+Azure Active Directory → App registrations → New registration
+Name: Lexara AI, Redirect URI: http://127.0.0.1:5000/auth/microsoft/callback
+Copy Application (client) ID
+Certificates & secrets → New client secret → Copy the Value
+3. Nothing else is required — Gemini, Google OAuth, GitHub OAuth, and PostgreSQL are all already configured and working.
+
+Once you share the Gmail + app password, I'll add them to .env directly. For Microsoft OAuth, share the client ID and secret and I'll add those too.
+

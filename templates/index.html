@@ -1,0 +1,923 @@
+﻿<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lexara AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css?v=7"/>
+</head>
+<body>
+
+<!-- Particle canvas background -->
+<canvas id="particleCanvas"></canvas>
+
+<div class="shell">
+
+  <!-- Mobile overlay backdrop -->
+  <div class="mob-overlay" id="mobOverlay" onclick="closeMobSidebar()"></div>
+
+  <!-- Mobile top bar (visible only on mobile via CSS) -->
+  <div class="mob-topbar" id="mobTopbar">
+    <button class="mob-menu-btn" onclick="toggleMobSidebar()" title="Menu">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <span class="mob-topbar-title">Lexara AI</span>
+    <button class="mob-aside-btn" onclick="toggleMobAside()" title="Upload & Tools">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    </button>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       LEFT SIDEBAR (240px)
+  ══════════════════════════════════════════ -->
+  <nav class="sidebar">
+    <div class="sb-top">
+
+      <!-- Logo -->
+      <div class="sb-brand" onclick="openAbout()" title="About Lexara AI">
+        <div class="sb-logo">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <defs>
+              <linearGradient id="lgNew" x1="2" y1="2" x2="22" y2="22">
+                <stop stop-color="#8B5CF6"/>
+                <stop offset="1" stop-color="#22D3EE"/>
+              </linearGradient>
+            </defs>
+            <circle cx="12" cy="12" r="10" fill="url(#lgNew)"/>
+            <!-- Letter L -->
+            <path d="M9 7v10h6" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <span class="sb-name">Lexara <span class="sb-ai">AI</span></span>
+      </div>
+
+      <!-- New Chat -->
+      <button class="btn-new" id="newChatBtn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Chat
+      </button>
+
+      <!-- Search -->
+      <div class="sb-search" id="sbSearch">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="searchInput" placeholder="Search chats… (Ctrl+K)" oninput="searchChats(this.value)"/>
+      </div>
+      <div class="search-results hidden" id="searchResults"></div>
+
+      <!-- Navigation -->
+      <div class="sb-label">Navigation</div>
+      <div class="sb-nav">
+        <button class="sb-item active" data-view="chat" onclick="switchView('chat')">
+          <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          Dashboard
+        </button>
+        <button class="sb-item" data-view="documents" onclick="switchView('documents')">
+          <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Documents
+        </button>
+        <button class="sb-item" data-view="workspaces" onclick="switchView('workspaces')">
+          <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          Workspaces
+        </button>
+        <button class="sb-item" data-view="activity" onclick="switchView('activity')">
+          <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Activity
+        </button>
+        <button class="sb-item" data-view="analytics" onclick="switchView('analytics')">
+          <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Insights
+        </button>
+      </div>
+
+      <!-- Recent Chats -->
+      <div class="sb-label" style="margin-top:.75rem">Recent Chats</div>
+      <div class="sb-history" id="chatHistory"></div>
+    </div>
+
+    <!-- Bottom: theme toggle + user card -->
+    <div class="sb-bottom">
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">
+        <span class="tt-label"><span id="themeIcon">🌙</span> <span id="themeLabel">Dark mode</span></span>
+        <div class="tt-track"><div class="tt-thumb"></div></div>
+      </button>
+      <div class="sb-user" id="userCard" onclick="openProfile()" style="cursor:pointer" title="Profile & Settings">
+        <div class="sb-avatar" id="userAvatar">?</div>
+        <div class="sb-uinfo">
+          <div class="sb-uname" id="userName">Loading...</div>
+          <div class="sb-uemail" id="userEmail"></div>
+        </div>
+        <button class="sb-logout" onclick="logout()" title="Sign out">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ══════════════════════════════════════════
+       MAIN CONTENT AREA
+  ══════════════════════════════════════════ -->
+  <main class="main">
+
+    <!-- ── CHAT VIEW ── -->
+    <div class="view" id="view-chat">
+      <div class="chat-layout">
+
+        <!-- CENTER PANEL -->
+        <div class="chat-panel">
+
+          <!-- Top bar -->
+          <div class="chat-bar">
+            <div class="chat-bar-left">
+              <div class="chat-bar-title" id="chatTitle">New Chat</div>
+              <div class="status-chip" id="statusChip">
+                <span class="sdot idle" id="statusDot"></span>
+                <span id="statusText">Ready</span>
+              </div>
+            </div>
+            <div class="chat-bar-right">
+              <button class="topbar-btn" onclick="exportChat()" title="Export chat (Ctrl+E)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export
+              </button>
+              <button class="topbar-btn" onclick="shareChat()" title="Share chat" id="shareBtn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                Share
+              </button>
+            </div>
+          </div>
+
+          <!-- Chat window -->
+          <div class="chat-win" id="chatWindow"></div>
+
+          <!-- Input area -->
+          <div class="chat-foot">
+            <!-- @mention autocomplete -->
+            <div class="mention-dropdown hidden" id="mentionDropdown"></div>
+            <div class="chat-input-box" id="chatInputBox">
+              <button class="voice-btn" id="voiceBtn" title="Voice input (hold to speak)" onclick="toggleVoice()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
+              <button class="prompts-btn" id="promptsBtn" title="Saved prompts" onclick="openPromptsPanel()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              </button>
+              <textarea id="questionInput" placeholder="Ask anything… (or use 🎤 for voice, @ to mention a doc)" rows="1"></textarea>
+              <button class="send-btn" id="askBtn" disabled>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M22 2L11 13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+                  <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <p class="chat-hint">Enter to send · Shift+Enter for new line · 🎤 voice · 📋 saved prompts</p>
+          </div>
+        </div>
+
+        <!-- RIGHT PANEL (280px) -->
+        <aside class="chat-aside">
+
+          <!-- Upload Files -->
+          <div class="aside-card">
+            <div class="aside-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload Files
+            </div>
+            <div class="dropzone" id="dropZone">
+              <div class="dz-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </div>
+              <p class="dz-title">Drop files here</p>
+              <p class="dz-sub">PDF · DOCX · TXT · MD</p>
+              <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.md" multiple hidden/>
+            </div>
+            <ul id="fileList" class="file-list"></ul>
+            <button class="btn-process" id="uploadBtn" disabled>
+              <span class="bp-icon">⚡</span>
+              <span id="uploadBtnText">Process Files</span>
+              <div class="bp-spin hidden" id="uploadLoader"></div>
+            </button>
+            <div id="uploadStatus" class="up-alert hidden"></div>
+          </div>
+
+          <!-- Web Ingestion -->
+          <div class="aside-card">
+            <div class="aside-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+              Web Ingestion
+            </div>
+            <div class="ingest-wrap">
+              <input type="text" id="ingestUrl" placeholder="Paste URL or YouTube link…" class="ingest-input"/>
+              <button class="btn-ingest" onclick="ingestUrl()">Add</button>
+            </div>
+            <p class="ingest-hint">Supports any webpage or YouTube video with captions</p>
+          </div>
+
+          <!-- Knowledge Base -->
+          <div class="aside-card" id="docsCard" style="display:none">
+            <div class="aside-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+              Knowledge Base
+            </div>
+            <ul id="docListSidebar" class="kb-list"></ul>
+            <div class="kb-meta" id="chunkInfo"></div>
+          </div>
+
+          <!-- Smart Tools (hidden by default, shown when docs loaded) -->
+          <div class="aside-card hidden" id="smartCard">
+            <div class="aside-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Smart Tools
+            </div>
+            <div class="smart-btns">
+              <button class="smart-btn" id="suggestBtn">💡 Suggest Questions</button>
+              <button class="smart-btn" id="summarizeBtn">📋 Summarize</button>
+              <button class="smart-btn" id="topicsBtn">🏷️ Extract Topics</button>
+            </div>
+            <div class="smart-output hidden" id="smartOutput"></div>
+          </div>
+
+        </aside>
+      </div>
+    </div>
+
+    <!-- ── DOCUMENTS VIEW ── -->
+    <div class="view hidden" id="view-documents">
+      <div class="view-hdr">
+        <div>
+          <h1 class="view-ttl">Document Library</h1>
+          <p class="view-sub">Manage your knowledge base</p>
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <!-- Full-text search -->
+          <div class="doc-search-wrap">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="docSearchInput" placeholder="Search document content…" oninput="searchDocContent(this.value)"/>
+          </div>
+          <!-- Compare button -->
+          <button class="topbar-btn" onclick="openCompareModal()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="18"/><rect x="14" y="3" width="7" height="18"/></svg>
+            Compare
+          </button>
+          <!-- New folder -->
+          <button class="topbar-btn" onclick="openNewFolderModal()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            New Folder
+          </button>
+          <button class="btn-primary-sm" onclick="document.getElementById('fileInput').click()">Upload</button>
+        </div>
+      </div>
+
+      <!-- Bulk upload progress -->
+      <div id="bulkProgressWrap" class="bulk-progress-wrap hidden">
+        <div class="bulk-progress-title">Uploading files…</div>
+        <div id="bulkProgressList" class="bulk-progress-list"></div>
+      </div>
+
+      <!-- Doc content search results -->
+      <div id="docSearchResults" class="doc-search-results hidden"></div>
+
+      <!-- Folders row -->
+      <div id="foldersRow" class="folders-row"></div>
+
+      <div class="doc-grid" id="docGrid"></div>
+    </div>
+
+    <!-- ── ANALYTICS VIEW ── -->
+    <div class="view hidden" id="view-analytics">
+      <div class="view-hdr">
+        <div>
+          <h1 class="view-ttl">Insights &amp; Analytics</h1>
+          <p class="view-sub">Your workspace overview</p>
+        </div>
+        <button class="topbar-btn" onclick="exportAnalyticsCSV()" title="Export all analytics as CSV">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export CSV
+        </button>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="sc-icon">📄</div>
+          <div class="sc-val" id="statDocs">—</div>
+          <div class="sc-lbl">Documents</div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-icon">💬</div>
+          <div class="sc-val" id="statChats">—</div>
+          <div class="sc-lbl">Chats</div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-icon">🔍</div>
+          <div class="sc-val" id="statQueries">—</div>
+          <div class="sc-lbl">Queries</div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-icon">🧩</div>
+          <div class="sc-val" id="statChunks">—</div>
+          <div class="sc-lbl">Chunks Indexed</div>
+        </div>
+      </div>
+      <div class="info-grid">
+        <div class="info-card">
+          <h3>🚀 How It Works</h3>
+          <ol>
+            <li>Upload PDF, DOCX, or TXT documents</li>
+            <li>Documents are chunked and embedded with AI</li>
+            <li>Your question retrieves the most relevant chunks</li>
+            <li>Gemini generates a grounded, cited answer</li>
+          </ol>
+        </div>
+        <div class="info-card">
+          <h3>💡 Tips</h3>
+          <ul>
+            <li>Ask specific, focused questions</li>
+            <li>Use Summarize for document overviews</li>
+            <li>Try Suggest Questions to explore content</li>
+            <li>Upload related docs for cross-document answers</li>
+          </ul>
+        </div>
+      </div>
+      <!-- Extended analytics -->
+      <div class="analytics-ext" id="analyticsExt"></div>
+      <!-- Full analytics dashboard -->
+      <div class="analytics-full" id="analyticsFull"></div>
+    </div>
+
+    <!-- ── WORKSPACES VIEW ── -->
+    <div class="view hidden" id="view-workspaces">
+      <div class="view-hdr">
+        <div>
+          <h1 class="view-ttl">Team Workspaces</h1>
+          <p class="view-sub">Shared document libraries with role-based access</p>
+        </div>
+        <button class="btn-primary-sm" onclick="openNewWorkspaceModal()">+ New Workspace</button>
+      </div>
+      <div class="ws-grid" id="wsGrid"></div>
+      <!-- Workspace detail panel -->
+      <div class="ws-detail hidden" id="wsDetail">
+        <div class="ws-detail-hdr">
+          <button class="topbar-btn" onclick="closeWsDetail()">← Back</button>
+          <h2 id="wsDetailName"></h2>
+          <span class="ws-role-badge" id="wsDetailRole"></span>
+          <div style="flex:1"></div>
+          <button class="topbar-btn" onclick="openEditWsModal()" id="wsEditBtn" style="display:none">✏️ Edit</button>
+          <button class="topbar-btn" onclick="openInviteModal()" id="wsInviteBtn">+ Invite</button>
+        </div>
+        <div class="ws-detail-body">
+          <div class="ws-section">
+            <div class="ws-section-title">📄 Shared Documents</div>
+            <div class="ws-doc-actions" id="wsDocActions" style="display:none">
+              <select id="wsDocSelect" class="cmp-input" style="flex:1;font-size:.8rem"></select>
+              <button class="btn-primary-sm" onclick="addDocToWs()">Add</button>
+            </div>
+            <div id="wsDocList" class="ws-doc-list"></div>
+          </div>
+          <div class="ws-section">
+            <div class="ws-section-title">👥 Members</div>
+            <div id="wsMemberList" class="ws-member-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ACTIVITY VIEW ── -->
+    <div class="view hidden" id="view-activity">
+      <div class="view-hdr">
+        <div>
+          <h1 class="view-ttl">Activity Feed</h1>
+          <p class="view-sub">Everything happening in your workspace</p>
+        </div>
+        <button class="topbar-btn" onclick="loadActivity()">↻ Refresh</button>
+      </div>
+      <div id="activityFeed" class="activity-feed"></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── NEW WORKSPACE MODAL ── -->
+<div class="modal-bg hidden" id="newWsModal">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-hdr">
+      <h3>New Workspace</h3>
+      <button class="modal-x" onclick="document.getElementById('newWsModal').classList.add('hidden')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:.75rem;padding:1rem">
+      <div class="pp-field"><label>Workspace Name</label><input type="text" id="wsNameInput" placeholder="e.g. Research Team"/></div>
+      <div class="pp-field"><label>Description <span style="color:var(--text3)">(optional)</span></label><input type="text" id="wsDescInput" placeholder="What is this workspace for?"/></div>
+      <button class="pp-save-btn" onclick="createWorkspace()">Create Workspace</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── EDIT WORKSPACE MODAL ── -->
+<div class="modal-bg hidden" id="editWsModal">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-hdr">
+      <h3>✏️ Edit Workspace</h3>
+      <button class="modal-x" onclick="document.getElementById('editWsModal').classList.add('hidden')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:.75rem;padding:1rem">
+      <div class="pp-field"><label>Workspace Name</label><input type="text" id="editWsNameInput" placeholder="e.g. Research Team"/></div>
+      <div class="pp-field"><label>Description <span style="color:var(--text3)">(optional)</span></label><input type="text" id="editWsDescInput" placeholder="What is this workspace for?"/></div>
+      <button class="pp-save-btn" onclick="saveEditWorkspace()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── INVITE MEMBER MODAL ── -->
+<div class="modal-bg hidden" id="inviteModal">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-hdr">
+      <h3>Invite Member</h3>
+      <button class="modal-x" onclick="document.getElementById('inviteModal').classList.add('hidden')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:.75rem;padding:1rem">
+      <div class="pp-field"><label>Email Address</label><input type="email" id="inviteEmail" placeholder="colleague@company.com"/></div>
+      <div class="pp-field">
+        <label>Access Mode</label>
+        <select id="inviteRole" class="cmp-input">
+          <option value="viewer">View mode — can read documents and chats</option>
+          <option value="editor">Edit mode — can add and remove documents</option>
+          <option value="admin">Admin — full access except delete workspace</option>
+        </select>
+      </div>
+      <button class="pp-save-btn" onclick="inviteMember()">Send Invite</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PROFILE / SETTINGS POPUP
+══════════════════════════════════════════ -->
+<div class="profile-popup hidden" id="profilePopup">
+  <div class="pp-header">
+    <div class="pp-avatar" id="ppAvatar">?</div>
+    <div class="pp-info">
+      <div class="pp-name" id="ppName">—</div>
+      <div class="pp-email" id="ppEmail">—</div>
+    </div>
+    <button class="pp-close" onclick="closeProfile()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="pp-tabs">
+    <button class="pp-tab active" onclick="ppTab('profile')">👤 Profile</button>
+    <button class="pp-tab" onclick="ppTab('settings')">⚙️ Settings</button>
+    <button class="pp-tab" onclick="ppTab('security')">🔐 Security</button>
+    <button class="pp-tab" onclick="ppTab('sessions')">📱 Sessions</button>
+    <button class="pp-tab" onclick="ppTab('billing')">💳 Plan</button>
+    <button class="pp-tab" onclick="ppTab('apikeys')">🔑 API Keys</button>
+  </div>
+  <!-- Profile Tab -->
+  <div class="pp-body" id="ppProfile">
+    <div class="pp-section-title">Personal Information</div>
+    <div class="pp-field"><label>Full Name</label><input type="text" id="ppNameInput" placeholder="Your name"/></div>
+    <div class="pp-field"><label>Email Address</label><input type="email" id="ppEmailInput" placeholder="your@email.com" disabled/><span class="pp-field-note">Email cannot be changed</span></div>
+    <div class="pp-field"><label>Company <span style="color:var(--text3);font-weight:400">(optional)</span></label><input type="text" id="ppCompany" placeholder="Acme Corp"/></div>
+    <div class="pp-divider"></div>
+    <div class="pp-section-title">Change Password</div>
+    <div class="pp-field"><label>Current Password</label><input type="password" id="ppOldPwd" placeholder="••••••••"/></div>
+    <div class="pp-field"><label>New Password</label><input type="password" id="ppNewPwd" placeholder="Min. 6 characters"/></div>
+    <div class="pp-field"><label>Confirm New Password</label><input type="password" id="ppConfirmPwd" placeholder="Repeat new password"/></div>
+    <div class="pp-alert hidden" id="ppAlert"></div>
+  </div>
+  <div class="pp-footer">
+    <button class="pp-save-btn" onclick="saveProfile()">Save Changes</button>
+  </div>
+  <!-- Settings Tab -->
+  <div class="pp-body hidden" id="ppSettings">
+    <div class="pp-section-title">Appearance</div>
+    <div class="pp-setting-row">
+      <div><div class="pp-setting-label">Dark Mode</div><div class="pp-setting-desc">Switch between light and dark theme</div></div>
+      <div class="pp-toggle" id="ppThemeToggle" onclick="toggleTheme();syncThemeToggle()"><div class="pp-toggle-thumb"></div></div>
+    </div>
+    <div class="pp-divider"></div>
+    <div class="pp-section-title">Chat Preferences</div>
+    <div class="pp-setting-row">
+      <div><div class="pp-setting-label">Enter to Send</div><div class="pp-setting-desc">Press Enter to send messages</div></div>
+      <div class="pp-toggle active" id="enterToggle" onclick="this.classList.toggle('active')"><div class="pp-toggle-thumb"></div></div>
+    </div>
+    <div class="pp-setting-row">
+      <div><div class="pp-setting-label">Show Source Citations</div><div class="pp-setting-desc">Display document sources below answers</div></div>
+      <div class="pp-toggle active" id="srcToggle" onclick="this.classList.toggle('active')"><div class="pp-toggle-thumb"></div></div>
+    </div>
+    <div class="pp-divider"></div>
+    <div class="pp-section-title">Danger Zone</div>
+    <div class="pp-danger-card">
+      <div><div class="pp-setting-label" style="color:#ef4444">Delete All Documents</div><div class="pp-setting-desc">Permanently remove all uploaded files</div></div>
+      <button class="pp-danger-btn" onclick="dangerClear()">Clear All</button>
+    </div>
+    <div class="pp-danger-card">
+      <div><div class="pp-setting-label" style="color:#ef4444">Log Out</div><div class="pp-setting-desc">Sign out but keep your account and data</div></div>
+      <button class="pp-danger-btn" onclick="logout()">Log Out</button>
+    </div>
+    <div class="pp-danger-card">
+      <div><div class="pp-setting-label" style="color:#ef4444">Delete Account</div><div class="pp-setting-desc">Permanently delete your account and all data. This cannot be undone.</div></div>
+      <button class="pp-danger-btn" style="background:#7f1d1d;border-color:#991b1b" onclick="deleteAccount()">Delete Account</button>
+    </div>
+  </div>
+
+  <!-- Security Tab -->
+  <div class="pp-body hidden" id="ppSecurity">
+    <div class="pp-section-title">Email Verification</div>
+    <div id="emailVerifiedStatus" class="pp-setting-row">
+      <div><div class="pp-setting-label">Email Status</div><div class="pp-setting-desc" id="emailVerifiedDesc">Checking…</div></div>
+      <button class="pp-danger-btn" id="resendVerifyBtn" style="background:var(--purple);display:none" onclick="resendVerification()">Resend</button>
+    </div>
+    <div class="pp-divider"></div>
+    <div class="pp-section-title">Two-Factor Authentication</div>
+    <div class="pp-setting-row">
+      <div><div class="pp-setting-label">Authenticator App</div><div class="pp-setting-desc">Use Google Authenticator or Authy</div></div>
+      <div id="twoFaToggleWrap">
+        <button class="pp-danger-btn" id="twoFaBtn" style="background:var(--purple)" onclick="toggle2FA()">Enable 2FA</button>
+      </div>
+    </div>
+    <div id="twoFaSetup" class="hidden" style="display:flex;flex-direction:column;gap:.6rem;margin-top:.5rem">
+      <p style="font-size:.75rem;color:var(--text2)">Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.</p>
+      <img id="twoFaQR" src="" style="width:160px;height:160px;border-radius:8px;align-self:center"/>
+      <div style="display:flex;gap:.4rem">
+        <input type="text" id="twoFaCode" class="cmp-input" placeholder="6-digit code" maxlength="6" style="flex:1;letter-spacing:.2em;text-align:center;font-size:1.1rem"/>
+        <button class="pp-save-btn" style="flex-shrink:0" onclick="confirm2FA()">Confirm</button>
+      </div>
+    </div>
+    <div id="twoFaDisable" class="hidden" style="display:flex;gap:.4rem;margin-top:.5rem">
+      <input type="text" id="twoFaDisableCode" class="cmp-input" placeholder="Enter code to disable" maxlength="6" style="flex:1;letter-spacing:.2em;text-align:center"/>
+      <button class="pp-danger-btn" onclick="do2FADisable()">Disable</button>
+    </div>
+    <div class="pp-alert hidden" id="secAlert"></div>
+  </div>
+
+  <!-- Sessions Tab -->
+  <div class="pp-body hidden" id="ppSessions">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+      <div class="pp-section-title" style="margin:0">Active Sessions</div>
+      <button class="pp-danger-btn" onclick="revokeAllSessions()" style="font-size:.68rem">Revoke All Others</button>
+    </div>
+    <div id="sessionsList" style="display:flex;flex-direction:column;gap:.4rem">
+      <p style="color:var(--text3);font-size:.78rem">Loading…</p>
+    </div>
+  </div>
+
+  <!-- Billing / Plan Tab -->
+  <div class="pp-body hidden" id="ppBilling">
+    <div class="pp-section-title">Current Plan</div>
+    <div id="tierCard" style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);border-radius:10px;padding:1rem;margin-bottom:.75rem">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:1rem;font-weight:700" id="tierName">—</div>
+          <div style="font-size:.75rem;color:var(--text3);margin-top:.2rem" id="tierDesc">Loading…</div>
+        </div>
+        <div id="tierBadgeWrap"></div>
+      </div>
+      <div style="margin-top:.75rem;display:flex;flex-direction:column;gap:.3rem" id="tierUsage"></div>
+    </div>
+    <div class="pp-section-title">Upgrade Plan</div>
+    <div style="display:flex;flex-direction:column;gap:.5rem" id="tierOptions"></div>
+    <div style="margin-top:.75rem;font-size:.72rem;color:var(--text3)">Payment gateway coming soon. Contact <a href="mailto:support@lexara.ai" style="color:var(--purple-l)">support@lexara.ai</a> to upgrade.</div>
+  </div>
+
+  <!-- API Keys Tab -->
+  <div class="pp-body hidden" id="ppApikeys">
+    <div class="pp-section-title">API Keys</div>
+    <div style="font-size:.75rem;color:var(--text3);margin-bottom:.75rem">Use API keys to query Lexara from your own apps. Requires Pro or Enterprise plan.</div>
+    <div style="display:flex;gap:.5rem;margin-bottom:.75rem">
+      <input type="text" id="newKeyLabel" placeholder="Key label (e.g. My App)" class="cmp-input" style="flex:1;font-size:.8rem"/>
+      <button class="pp-save-btn" style="padding:.4rem .9rem;font-size:.78rem" onclick="createApiKey()">Generate</button>
+    </div>
+    <div id="newKeyDisplay" class="hidden" style="background:rgba(34,211,238,.08);border:1px solid var(--cyan-border);border-radius:8px;padding:.65rem;margin-bottom:.75rem;font-size:.75rem">
+      <div style="color:var(--cyan);font-weight:600;margin-bottom:.3rem">⚠️ Copy this key now — it won't be shown again</div>
+      <code id="newKeyValue" style="color:var(--text);word-break:break-all"></code>
+      <button onclick="navigator.clipboard.writeText(document.getElementById('newKeyValue').textContent);toast('Copied!','success')" style="margin-left:.5rem;background:none;border:none;color:var(--cyan);cursor:pointer;font-size:.75rem">📋 Copy</button>
+    </div>
+    <div id="apiKeysList" style="display:flex;flex-direction:column;gap:.35rem"></div>
+    <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)">
+      <div class="pp-section-title">REST API Usage</div>
+      <div style="font-size:.75rem;color:var(--text2);display:flex;flex-direction:column;gap:.3rem">
+        <div><code style="color:var(--cyan)">POST /v1/ask</code> — Ask a question</div>
+        <div><code style="color:var(--cyan)">GET /v1/documents</code> — List documents</div>
+        <div style="color:var(--text3);margin-top:.25rem">Header: <code style="color:var(--purple-l)">X-API-Key: your_key</code></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="pp-backdrop hidden" id="ppBackdrop" onclick="closeProfile()"></div>
+
+<!-- ══════════════════════════════════════════
+     MODAL
+══════════════════════════════════════════ -->
+<div class="modal-bg hidden" id="modalOverlay">
+  <div class="modal-box">
+    <div class="modal-hdr">
+      <h3 id="modalTitle"></h3>
+      <button class="modal-x" onclick="closeModal()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body md-content" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- Mobile bottom navigation (visible only on mobile via CSS) -->
+<nav class="mob-bottom-nav" id="mobBottomNav">
+  <button class="mob-nav-btn active" data-view="chat" onclick="switchView('chat');mobNavActive(this)">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    Chat
+  </button>
+  <button class="mob-nav-btn" data-view="documents" onclick="switchView('documents');mobNavActive(this)">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    Docs
+  </button>
+  <button class="mob-nav-btn" data-view="workspaces" onclick="switchView('workspaces');mobNavActive(this)">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/></svg>
+    Teams
+  </button>
+  <button class="mob-nav-btn" data-view="analytics" onclick="switchView('analytics');mobNavActive(this)">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    Insights
+  </button>
+  <button class="mob-nav-btn" onclick="openProfile()">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    Profile
+  </button>
+</nav>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Onboarding modal -->
+<div class="modal-bg hidden" id="onboardingModal">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-hdr">
+      <h3>👋 Welcome to Lexara AI</h3>
+      <button class="modal-x" onclick="closeOnboarding()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="onboard-steps">
+        <div class="onboard-step"><div class="os-num">1</div><div><div class="os-title">Upload Documents</div><div class="os-desc">Drop PDFs, DOCX, TXT files — or paste a URL/YouTube link in the right panel</div></div></div>
+        <div class="onboard-step"><div class="os-num">2</div><div><div class="os-title">Ask Questions</div><div class="os-desc">Type any question in plain language. Lexara finds the most relevant content</div></div></div>
+        <div class="onboard-step"><div class="os-num">3</div><div><div class="os-title">Get Cited Answers</div><div class="os-desc">Every answer shows exactly which file and page it came from</div></div></div>
+      </div>
+      <div class="onboard-shortcuts">
+        <div class="os-title" style="margin-bottom:.5rem">⌨️ Keyboard Shortcuts</div>
+        <div class="shortcut-grid">
+          <span class="kbd">Ctrl+K</span><span>Search chats</span>
+          <span class="kbd">Ctrl+N</span><span>New chat</span>
+          <span class="kbd">Ctrl+E</span><span>Export chat</span>
+          <span class="kbd">Enter</span><span>Send message</span>
+          <span class="kbd">Shift+Enter</span><span>New line</span>
+        </div>
+      </div>
+      <button class="pp-save-btn" style="margin-top:1rem" onclick="closeOnboarding()">Get Started →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     ABOUT MODAL
+══════════════════════════════════════════ -->
+<div class="modal-bg hidden" id="aboutModal">
+  <div class="modal-box about-modal-box">
+    <div class="modal-hdr">
+      <h3 id="aboutModalTitle">About Lexara AI</h3>
+      <button class="modal-x" onclick="closeAbout()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body about-body">
+
+      <!-- Hero -->
+      <div class="about-hero">
+        <div class="about-logo-mark">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+            <defs>
+              <linearGradient id="aboutGrad" x1="2" y1="2" x2="22" y2="22">
+                <stop stop-color="#8B5CF6"/><stop offset="1" stop-color="#22D3EE"/>
+              </linearGradient>
+            </defs>
+            <circle cx="12" cy="12" r="10" fill="url(#aboutGrad)"/>
+            <path d="M9 7v10h6" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="about-hero-text">
+          <div class="about-name">Lexara <span>AI</span></div>
+          <div class="about-version">Version 1.0 · Powered by Gemini</div>
+        </div>
+      </div>
+
+      <p class="about-tagline">Turn your documents into conversations. Ask anything, get cited answers — instantly.</p>
+
+      <!-- Feature grid -->
+      <div class="about-features">
+        <div class="about-feat">
+          <div class="about-feat-icon">⚡</div>
+          <div class="about-feat-title">Instant Answers</div>
+          <div class="about-feat-desc">Semantic search across all your documents in milliseconds</div>
+        </div>
+        <div class="about-feat">
+          <div class="about-feat-icon">🧠</div>
+          <div class="about-feat-title">Gemini AI</div>
+          <div class="about-feat-desc">Powered by Google's Gemini for accurate, grounded responses</div>
+        </div>
+        <div class="about-feat">
+          <div class="about-feat-icon">📌</div>
+          <div class="about-feat-title">Source Citations</div>
+          <div class="about-feat-desc">Every answer links back to the exact file and page</div>
+        </div>
+        <div class="about-feat">
+          <div class="about-feat-icon">🔒</div>
+          <div class="about-feat-title">Private & Secure</div>
+          <div class="about-feat-desc">Your documents stay in your own knowledge base</div>
+        </div>
+        <div class="about-feat">
+          <div class="about-feat-icon">🌐</div>
+          <div class="about-feat-title">Web Ingestion</div>
+          <div class="about-feat-desc">Index any webpage or YouTube video with one click</div>
+        </div>
+        <div class="about-feat">
+          <div class="about-feat-icon">💬</div>
+          <div class="about-feat-title">Chat History</div>
+          <div class="about-feat-desc">All your conversations saved and searchable</div>
+        </div>
+      </div>
+
+      <!-- Tech stack -->
+      <div class="about-stack">
+        <div class="about-stack-title">Built with</div>
+        <div class="about-stack-pills">
+          <span class="about-pill">🐍 Python / Flask</span>
+          <span class="about-pill">🤖 Gemini AI</span>
+          <span class="about-pill">🔍 FAISS</span>
+          <span class="about-pill">🗄️ PostgreSQL</span>
+          <span class="about-pill">📐 Sentence Transformers</span>
+          <span class="about-pill">📄 PyMuPDF</span>
+        </div>
+      </div>
+
+      <div class="about-footer">
+        <span>© 2026 Lexara AI · All rights reserved</span>
+        <span class="about-heart">Made with ❤️</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     COMPARE MODAL
+══════════════════════════════════════════ -->
+<div class="modal-bg hidden" id="compareModal">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-hdr">
+      <h3>📊 Compare Documents</h3>
+      <button class="modal-x" onclick="document.getElementById('compareModal').classList.add('hidden')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:.75rem">
+      <div class="field-row">
+        <label class="cmp-label">Document A</label>
+        <select id="cmpDocA" class="cmp-select"></select>
+      </div>
+      <div class="field-row">
+        <label class="cmp-label">Document B</label>
+        <select id="cmpDocB" class="cmp-select"></select>
+      </div>
+      <div class="field-row">
+        <label class="cmp-label">Topic / Aspect</label>
+        <input type="text" id="cmpTopic" class="cmp-input" placeholder="e.g. methodology, conclusions, pricing…"/>
+      </div>
+      <button class="pp-save-btn" onclick="runComparison()">Compare Now</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     NEW FOLDER MODAL
+══════════════════════════════════════════ -->
+<div class="modal-bg hidden" id="newFolderModal">
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-hdr">
+      <h3>📁 New Folder</h3>
+      <button class="modal-x" onclick="document.getElementById('newFolderModal').classList.add('hidden')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:.75rem">
+      <input type="text" id="newFolderName" class="cmp-input" placeholder="Folder name…"/>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <label class="cmp-label" style="margin:0">Color</label>
+        <div class="folder-colors" id="folderColors">
+          <span class="fc" data-color="#8b5cf6" style="background:#8b5cf6" onclick="selectFolderColor(this)"></span>
+          <span class="fc" data-color="#22d3ee" style="background:#22d3ee" onclick="selectFolderColor(this)"></span>
+          <span class="fc" data-color="#f59e0b" style="background:#f59e0b" onclick="selectFolderColor(this)"></span>
+          <span class="fc" data-color="#ef4444" style="background:#ef4444" onclick="selectFolderColor(this)"></span>
+          <span class="fc" data-color="#10b981" style="background:#10b981" onclick="selectFolderColor(this)"></span>
+          <span class="fc" data-color="#3b82f6" style="background:#3b82f6" onclick="selectFolderColor(this)"></span>
+        </div>
+      </div>
+      <button class="pp-save-btn" onclick="createFolder()">Create Folder</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     DOCUMENT PREVIEW MODAL
+══════════════════════════════════════════ -->
+<div class="modal-bg hidden" id="previewModal">
+  <div class="modal-box preview-modal-box">
+    <div class="modal-hdr">
+      <h3 id="previewTitle">Document Preview</h3>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <span id="previewVersionBadge" class="version-badge hidden"></span>
+        <button class="modal-x" onclick="closePreview()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="preview-body">
+      <div id="previewLoading" class="preview-loading">
+        <div class="preview-spinner"></div>
+        <span>Loading preview…</span>
+      </div>
+      <iframe id="previewFrame" class="preview-frame hidden" src="about:blank"></iframe>
+      <div id="previewFallback" class="preview-fallback hidden">
+        <div style="font-size:3rem">📄</div>
+        <p>Preview not available for this file type.</p>
+        <a id="previewDownload" href="#" class="pp-save-btn" style="display:inline-block;text-decoration:none;margin-top:.75rem" download>Download File</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SAVED PROMPTS PANEL
+══════════════════════════════════════════ -->
+<div class="modal-bg hidden" id="promptsModal">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-hdr">
+      <h3>📋 Saved Prompts</h3>
+      <button class="modal-x" onclick="closePromptsPanel()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="padding:.75rem;display:flex;flex-direction:column;gap:.75rem">
+      <div style="display:flex;flex-direction:column;gap:.4rem">
+        <input type="text" id="promptTitleInput" class="cmp-input" placeholder="Prompt title…"/>
+        <div style="display:flex;gap:.5rem">
+          <textarea id="promptTextInput" class="cmp-input" placeholder="Prompt text… (or leave blank to save current question)" rows="2" style="flex:1;resize:vertical;font-family:inherit;font-size:.82rem"></textarea>
+          <button class="pp-save-btn" style="flex-shrink:0;padding:.5rem .9rem;align-self:flex-end" onclick="saveCurrentPrompt()">Save</button>
+        </div>
+      </div>
+      <div id="promptsList" style="display:flex;flex-direction:column;gap:.4rem;max-height:280px;overflow-y:auto"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SHARE CHAT MODAL
+══════════════════════════════════════════ -->
+<div class="modal-bg hidden" id="shareModal">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-hdr">
+      <h3>🔗 Share Conversation</h3>
+      <button class="modal-x" onclick="document.getElementById('shareModal').classList.add('hidden')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:.85rem">
+      <p style="font-size:.85rem;color:var(--text2)">Anyone with this link can view this conversation in read-only mode.</p>
+      <div style="display:flex;gap:.5rem">
+        <input type="text" id="shareUrlInput" class="cmp-input" readonly style="flex:1;font-size:.78rem"/>
+        <button class="pp-save-btn" style="flex-shrink:0;padding:.5rem .9rem" onclick="copyShareUrl()">Copy</button>
+      </div>
+      <button class="topbar-btn" style="align-self:flex-start" onclick="window.open(document.getElementById('shareUrlInput').value,'_blank')">Open link ↗</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     VOICE INPUT OVERLAY
+══════════════════════════════════════════ -->
+<div class="voice-overlay hidden" id="voiceOverlay">
+  <div class="voice-orb" id="voiceOrb">
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+  </div>
+  <div class="voice-label" id="voiceLabel">Listening…</div>
+  <div class="voice-transcript" id="voiceTranscript"></div>
+  <button class="voice-cancel" onclick="cancelVoice()">Cancel</button>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

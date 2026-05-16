@@ -1,0 +1,371 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lexara AI — Sign In</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/login.css"/>
+</head>
+<body>
+
+<!-- Animated background -->
+<canvas id="loginCanvas"></canvas>
+
+<!-- Floating orbs -->
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<div class="page">
+
+  <!-- ── LEFT PANEL ── -->
+  <div class="left-panel">
+    <div class="lp-logo">
+      <div class="lp-logo-mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" fill="white" fill-opacity=".9"/>
+          <path d="M8 12h8M12 8v8" stroke="#0d9488" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span class="lp-logo-name">Lexara <span class="lp-logo-ai">AI</span></span>
+    </div>
+
+    <h1 class="lp-headline">Turn your documents<br/>into <span>conversations</span></h1>
+    <p class="lp-sub">Upload PDFs, ask questions in plain English, and get instant answers grounded in your content — powered by Gemini AI.</p>
+
+    <div class="lp-features">
+      <div class="lp-feat">
+        <div class="lp-feat-icon">⚡</div>
+        <div>
+          <div class="lp-feat-title">Instant Answers</div>
+          <div class="lp-feat-desc">Get answers from your documents in seconds, not hours</div>
+        </div>
+      </div>
+      <div class="lp-feat">
+        <div class="lp-feat-icon">🔍</div>
+        <div>
+          <div class="lp-feat-title">Semantic Search</div>
+          <div class="lp-feat-desc">AI understands meaning, not just keywords</div>
+        </div>
+      </div>
+      <div class="lp-feat">
+        <div class="lp-feat-icon">📌</div>
+        <div>
+          <div class="lp-feat-title">Source Citations</div>
+          <div class="lp-feat-desc">Every answer links back to the exact page and file</div>
+        </div>
+      </div>
+      <div class="lp-feat">
+        <div class="lp-feat-icon">🔒</div>
+        <div>
+          <div class="lp-feat-title">Private & Secure</div>
+          <div class="lp-feat-desc">Your documents stay in your own knowledge base</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lp-proof">
+      <div class="lp-avatars">
+        <div class="lp-av" style="background:#0d9488">J</div>
+        <div class="lp-av" style="background:#0891b2">S</div>
+        <div class="lp-av" style="background:#6366f1">A</div>
+        <div class="lp-av" style="background:#f59e0b">R</div>
+      </div>
+      <p class="lp-proof-text">Trusted by <strong>2,000+</strong> professionals and teams</p>
+    </div>
+  </div>
+
+  <!-- ── RIGHT PANEL ── -->
+  <div class="right-panel">
+    <div class="auth-card">
+
+      <div class="auth-tabs">
+        <div class="tab-track" id="tabTrack"></div>
+        <button class="auth-tab active" id="tabLogin" onclick="switchTab('login')">Sign In</button>
+        <button class="auth-tab" id="tabSignup" onclick="switchTab('signup')">Sign Up</button>
+      </div>
+
+      <div class="alert-box hidden" id="alertBox">
+        <span id="alertIcon">⚠️</span>
+        <span id="alertMsg"></span>
+        <button class="alert-close" onclick="hideAlert()">✕</button>
+      </div>
+
+      <!-- ── LOGIN ── -->
+      <form id="loginForm" class="auth-form" onsubmit="handleLogin(event)">
+        <div class="form-intro">
+          <h2>Welcome back</h2>
+          <p>Sign in to your Lexara workspace</p>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Email address</label>
+          <div class="field-input">
+            <svg class="field-svg" viewBox="0 0 20 20" fill="currentColor"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg>
+            <input type="email" id="loginEmail" placeholder="you@company.com" required autocomplete="email"/>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">
+            Password
+            <a href="#" class="field-link" onclick="showForgot(event)">Forgot password?</a>
+          </label>
+          <div class="field-input">
+            <svg class="field-svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
+            <input type="password" id="loginPwd" placeholder="••••••••" required autocomplete="current-password"/>
+            <button type="button" class="eye-btn" onclick="togglePwd('loginPwd',this)" tabindex="-1">
+              <svg class="eye-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="row-between">
+          <label class="check-label">
+            <input type="checkbox" id="rememberMe" class="check-input"/>
+            <span class="check-box"></span>
+            Keep me signed in
+          </label>
+        </div>
+
+        <button type="submit" class="submit-btn" id="loginBtn">
+          <span class="btn-label" id="loginLabel">Sign In</span>
+          <span class="btn-arrow" id="loginArrow">→</span>
+          <span class="btn-spin hidden" id="loginSpin"></span>
+        </button>
+
+        <div class="or-divider"><span>or continue with</span></div>
+
+        <div class="oauth-grid" style="grid-template-columns:1fr 1fr">
+          <button type="button" class="oauth-pill" onclick="window.location.href='/auth/google'">
+            <svg width="14" height="14" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+            Google
+          </button>
+          <button type="button" class="oauth-pill" onclick="window.location.href='/auth/github'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            GitHub
+          </button>
+        </div>
+      </form>
+
+      <!-- ── SIGNUP ── -->
+      <form id="signupForm" class="auth-form hidden" onsubmit="handleSignup(event)">
+        <div class="form-intro">
+          <h2>Create account</h2>
+          <p>Free forever · No credit card needed</p>
+        </div>
+
+        <div class="two-col">
+          <div class="field-group">
+            <label class="field-label">First name</label>
+            <div class="field-input">
+              <svg class="field-svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+              <input type="text" id="signupFirst" placeholder="John" required autocomplete="given-name"/>
+            </div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Last name</label>
+            <div class="field-input">
+              <svg class="field-svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+              <input type="text" id="signupLast" placeholder="Smith" required autocomplete="family-name"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Work email</label>
+          <div class="field-input">
+            <svg class="field-svg" viewBox="0 0 20 20" fill="currentColor"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg>
+            <input type="email" id="signupEmail" placeholder="you@company.com" required autocomplete="email"/>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Company <span class="opt-tag">(optional)</span></label>
+          <div class="field-input">
+            <svg class="field-svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3a1 1 0 01-1-1v-2a1 1 0 00-1-1H9a1 1 0 00-1 1v2a1 1 0 01-1 1H4a1 1 0 110-2V4zm3 1h2v2H7V5zm2 4H7v2h2V9zm2-4h2v2h-2V5zm2 4h-2v2h2V9z" clip-rule="evenodd"/></svg>
+            <input type="text" id="signupCompany" placeholder="Acme Corp" autocomplete="organization"/>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Password</label>
+          <div class="field-input">
+            <svg class="field-svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
+            <input type="password" id="signupPwd" placeholder="Create a strong password" required minlength="6" autocomplete="new-password" oninput="checkStrength(this.value)"/>
+            <button type="button" class="eye-btn" onclick="togglePwd('signupPwd',this)" tabindex="-1">
+              <svg class="eye-icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
+            </button>
+          </div>
+          <div class="strength-row">
+            <div class="strength-segs">
+              <div class="seg" id="seg1"></div><div class="seg" id="seg2"></div>
+              <div class="seg" id="seg3"></div><div class="seg" id="seg4"></div>
+            </div>
+            <span class="strength-txt" id="strengthTxt"></span>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Confirm password</label>
+          <div class="field-input" id="confirmWrap">
+            <svg class="field-svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
+            <input type="password" id="signupConfirm" placeholder="Repeat password" required autocomplete="new-password" oninput="checkConfirm()"/>
+            <span class="match-icon" id="matchIcon"></span>
+          </div>
+        </div>
+
+        <label class="check-label">
+          <input type="checkbox" id="agreeTerms" class="check-input" required/>
+          <span class="check-box"></span>
+          I agree to the <a href="#" class="field-link">Terms of Service</a> and <a href="#" class="field-link">Privacy Policy</a>
+        </label>
+
+        <button type="submit" class="submit-btn" id="signupBtn">
+          <span class="btn-label" id="signupLabel">Create Free Account</span>
+          <span class="btn-arrow" id="signupArrow">→</span>
+          <span class="btn-spin hidden" id="signupSpin"></span>
+        </button>
+
+        <p class="switch-note">Already have an account? <a href="#" class="field-link" onclick="switchTab('login');return false">Sign in</a></p>
+      </form>
+
+    </div>
+
+    <div class="auth-footer">
+      <a href="#">Privacy</a><span>·</span>
+      <a href="#">Terms</a><span>·</span>
+      <a href="#">Security</a><span>·</span>
+      <a href="#">Help</a>
+      <span style="margin-left:auto;color:var(--ink4)">© 2026 Lexara AI</span>
+    </div>
+  </div>
+
+</div>
+<script src="/static/js/login.js"></script>
+<script>
+// ── Particle canvas ──────────────────────────────────────────────
+const canvas = document.getElementById('loginCanvas');
+const ctx    = canvas.getContext('2d');
+let W, H, particles = [];
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+class Particle {
+  constructor() { this.reset(true) }
+  reset(init) {
+    this.x  = Math.random() * W;
+    this.y  = init ? Math.random() * H : H + 10;
+    this.r  = Math.random() * 1.8 + .4;
+    this.vx = (Math.random() - .5) * .3;
+    this.vy = -(Math.random() * .5 + .2);
+    this.alpha = Math.random() * .5 + .1;
+    this.color = Math.random() > .5 ? '139,92,246' : '34,211,238';
+  }
+  update() {
+    this.x += this.vx; this.y += this.vy;
+    if (this.y < -10) this.reset(false);
+  }
+  draw() {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${this.color},${this.alpha})`;
+    ctx.fill();
+  }
+}
+
+for (let i = 0; i < 80; i++) particles.push(new Particle());
+
+function loop() {
+  ctx.clearRect(0, 0, W, H);
+  // Draw connecting lines between nearby particles
+  for (let i = 0; i < particles.length; i++) {
+    for (let j = i + 1; j < particles.length; j++) {
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 90) {
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = `rgba(139,92,246,${.08 * (1 - dist/90)})`;
+        ctx.lineWidth = .5;
+        ctx.stroke();
+      }
+    }
+    particles[i].update();
+    particles[i].draw();
+  }
+  requestAnimationFrame(loop);
+}
+loop();
+
+// ── Mouse parallax on left panel ────────────────────────────────
+const leftPanel = document.querySelector('.left-panel');
+document.addEventListener('mousemove', e => {
+  const xPct = (e.clientX / window.innerWidth  - .5) * 12;
+  const yPct = (e.clientY / window.innerHeight - .5) * 8;
+  leftPanel.style.transform = `translate(${xPct * .3}px, ${yPct * .3}px)`;
+  document.querySelectorAll('.orb').forEach((orb, i) => {
+    const factor = (i + 1) * .4;
+    orb.style.transform = `translate(${xPct * factor}px, ${yPct * factor}px)`;
+  });
+});
+</script>
+
+<!-- ── Forgot Password Modal ── -->
+<div class="forgot-overlay hidden" id="forgotModal" onclick="if(event.target===this)closeForgot()">
+  <div class="forgot-box">
+    <div class="forgot-hdr">
+      <div>
+        <div class="forgot-title">Reset your password</div>
+        <div class="forgot-sub">Enter your email and we'll send you a reset link.</div>
+      </div>
+      <button class="forgot-close" onclick="closeForgot()">✕</button>
+    </div>
+    <form onsubmit="submitForgot(event)">
+      <div class="forgot-field">
+        <label>Email address</label>
+        <input type="email" id="forgotEmail" placeholder="you@email.com" required autocomplete="email"/>
+      </div>
+      <div id="forgotAlert" class="forgot-alert" style="display:none"></div>
+      <button type="submit" class="forgot-btn" id="forgotBtn">Send Reset Link</button>
+    </form>
+    <div class="forgot-back">
+      <a href="#" onclick="closeForgot();return false;">← Back to sign in</a>
+    </div>
+  </div>
+</div>
+
+<style>
+.forgot-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:9999}
+.forgot-overlay.hidden{display:none}
+.forgot-box{background:#1e293b;border:1px solid #334155;border-radius:16px;padding:2rem;width:100%;max-width:400px;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+.forgot-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.5rem}
+.forgot-title{font-size:1.1rem;font-weight:700;color:#f8fafc}
+.forgot-sub{font-size:.8rem;color:#94a3b8;margin-top:.25rem}
+.forgot-close{background:none;border:none;color:#64748b;cursor:pointer;font-size:1.1rem;padding:.2rem;line-height:1;transition:color .15s}
+.forgot-close:hover{color:#f8fafc}
+.forgot-field{display:flex;flex-direction:column;gap:.4rem;margin-bottom:1rem}
+.forgot-field label{font-size:.8rem;font-weight:500;color:#94a3b8}
+.forgot-field input{background:#0f172a;border:1.5px solid #334155;border-radius:10px;padding:.65rem .9rem;color:#f8fafc;font-size:.9rem;font-family:inherit;outline:none;transition:border-color .2s}
+.forgot-field input:focus{border-color:#8b5cf6}
+.forgot-alert{padding:.55rem .8rem;border-radius:8px;font-size:.8rem;margin-bottom:.75rem}
+.forgot-alert.success{background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3);color:#34d399}
+.forgot-alert.error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);color:#f87171}
+.forgot-btn{width:100%;padding:.75rem;background:linear-gradient(135deg,#7c3aed,#8b5cf6);color:#fff;border:none;border-radius:10px;font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s}
+.forgot-btn:hover:not(:disabled){opacity:.9;transform:translateY(-1px)}
+.forgot-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+.forgot-back{text-align:center;margin-top:1rem;font-size:.8rem}
+.forgot-back a{color:#8b5cf6;text-decoration:none}
+.forgot-back a:hover{text-decoration:underline}
+</style>
+</body>
+</html>
+

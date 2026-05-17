@@ -89,8 +89,8 @@ class RAGPipeline:
                     metadata = pickle.load(f)
 
                 # Dimension guard � re-embed if model changed
-                from embeddings import get_model
-                expected_dim = get_model().get_embedding_dimension()
+                from embeddings import get_model, get_embedding_dimension
+                expected_dim = get_embedding_dimension()
                 if index.d != expected_dim and metadata:
                     print(f"[RAG] Dim mismatch user {user_id}: {index.d}?{expected_dim}, re-embedding�")
                     from embeddings import embed_batch

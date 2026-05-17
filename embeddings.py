@@ -1,40 +1,32 @@
 ﻿"""
-Embeddings - Uses SentenceTransformers with lazy loading for fast startup.
+Embeddings - Uses FastEmbed (ONNX-based, no PyTorch/CUDA needed) for fast startup.
+Model: BAAI/bge-small-en-v1.5 — 384 dims, ~130MB, CPU-only
 """
-
-import os, logging, warnings
-os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
-os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
-os.environ.setdefault("ABSL_MIN_LOG_LEVEL", "3")
-logging.getLogger("tensorflow").setLevel(logging.ERROR)
-logging.getLogger("absl").setLevel(logging.ERROR)
-warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 import numpy as np
 from typing import List
 
-MODEL_NAME = "all-mpnet-base-v2"
+MODEL_NAME = "BAAI/bge-small-en-v1.5"
 _model = None
 
 
 def get_model():
     global _model
     if _model is None:
-        # Import only when first needed — keeps server startup fast
-        from sentence_transformers import SentenceTransformer
-        _model = SentenceTransformer(MODEL_NAME)
+        from fastembed import TextEmbedding
+        _model = TextEmbedding(model_name=MODEL_NAME)
     return _model
 
 
 def embed_texts(texts: List[str], normalize: bool = True) -> np.ndarray:
     model = get_model()
-    embeddings = model.encode(
-        texts,
-        show_progress_bar=False,
-        convert_to_numpy=True,
-        normalize_embeddings=normalize
-    )
-    return embeddings.astype("float32")
+    embeddings = list(model.embed(texts))
+    arr = np.array(embeddings, dtype="float32")
+    if normalize:
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1, norms)
+        arr = arr / norms
+    return arr
 
 
 def embed_query(query: str, normalize: bool = True) -> np.ndarray:
@@ -42,14 +34,9 @@ def embed_query(query: str, normalize: bool = True) -> np.ndarray:
 
 
 def embed_batch(texts: List[str], batch_size: int = 32, normalize: bool = True) -> np.ndarray:
-    model = get_model()
-    embeddings = model.encode(
-        texts,
-        batch_size=batch_size,
-        show_progress_bar=True,
-        convert_to_numpy=True,
-        normalize_embeddings=normalize
-    )
-    return embeddings.astype("float32")
+    return embed_texts(texts, normalize=normalize)
 
 
+def get_embedding_dimension() -> int:
+    # BAAI/bge-small-en-v1.5 produces 384-dim embeddings
+    return 384

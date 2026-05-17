@@ -730,7 +730,7 @@ def export_chat(current_user, chat_id):
 
 @app.route("/auth/google")
 def google_login():
-    redirect_uri = "http://127.0.0.1:5000/auth/google/callback"
+    redirect_uri = request.host_url.rstrip("/") + "/auth/google/callback"
     return oauth.google.authorize_redirect(redirect_uri)
 
 
@@ -747,7 +747,7 @@ def google_callback():
 
 @app.route("/auth/github")
 def github_login():
-    redirect_uri = "http://127.0.0.1:5000/auth/github/callback"
+    redirect_uri = request.host_url.rstrip("/") + "/auth/github/callback"
     return oauth.github.authorize_redirect(redirect_uri)
 
 

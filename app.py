@@ -181,7 +181,7 @@ def delete_account(current_user):
     except Exception:
         pass
     # Delete user row — CASCADE handles all related data
-    with __import__("database").get_conn() as conn:
+    with __import__("database")._conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
         conn.commit()
@@ -423,7 +423,7 @@ def update_profile(current_user):
     if not name:
         return jsonify({"error": "Name is required"}), 400
 
-    with __import__("database").get_conn() as conn:
+    with __import__("database")._conn() as conn:
         with conn.cursor() as cur:
             if new_pwd:
                 if not check_password(old_pwd, current_user["password"]):
@@ -444,7 +444,7 @@ def update_profile(current_user):
 def clear_all(current_user):
     rag.clear_user(current_user["id"])
     # Delete all document records
-    with __import__("database").get_conn() as conn:
+    with __import__("database")._conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM documents WHERE user_id=%s", (current_user["id"],))
         conn.commit()

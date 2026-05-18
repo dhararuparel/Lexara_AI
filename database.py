@@ -1,21 +1,55 @@
 """
 PostgreSQL database layer — Lexara AI
-Uses psycopg2 with %s placeholders and RETURNING for inserts.
+Uses psycopg2 with connection pooling for fast repeated queries.
 """
 
 import os
 import psycopg2
 import psycopg2.extras
+from psycopg2 import pool
 from dotenv import load_dotenv
 
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# Connection pool — reuses connections instead of opening a new one per request
+_pool = None
+
+def _get_pool():
+    global _pool
+    if _pool is None:
+        _pool = pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=DATABASE_URL,
+            connect_timeout=10,
+        )
+    return _pool
 
 def get_conn():
-    conn = psycopg2.connect(DATABASE_URL)
-    return conn
+    return _get_pool().getconn()
+
+def release_conn(conn):
+    try:
+        _get_pool().putconn(conn)
+    except Exception:
+        pass
+
+from contextlib import contextmanager
+
+@contextmanager
+def _conn():
+    """Context manager that borrows a connection from the pool and returns it after use."""
+    conn = _get_pool().getconn()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        _get_pool().putconn(conn)
 
 
 def _row(cursor, one=True):
@@ -33,7 +67,7 @@ def _row(cursor, one=True):
 
 
 def init_db():
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -250,7 +284,7 @@ def init_db():
 # ── Users ──────────────────────────────────────────────────────────
 
 def create_user(name, email, hashed_password):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO users (name, email, password) VALUES (%s,%s,%s) RETURNING *",
@@ -262,14 +296,14 @@ def create_user(name, email, hashed_password):
 
 
 def get_user_by_email(email):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM users WHERE email=%s", (email,))
             return _row(cur)
 
 
 def get_user_by_id(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM users WHERE id=%s", (user_id,))
             return _row(cur)
@@ -279,7 +313,7 @@ def get_user_by_id(user_id):
 
 def add_document(user_id, filename, orig_name, file_size, file_type, pages, chunks,
                   folder_id=None, full_text='', parent_id=None, version=1):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO documents
@@ -294,7 +328,7 @@ def add_document(user_id, filename, orig_name, file_size, file_type, pages, chun
 
 
 def get_user_documents(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM documents WHERE user_id=%s ORDER BY created_at DESC",
@@ -304,7 +338,7 @@ def get_user_documents(user_id):
 
 
 def delete_document(doc_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM documents WHERE id=%s AND user_id=%s",
@@ -319,7 +353,7 @@ def delete_document(doc_id, user_id):
 
 
 def get_document_stats(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT COUNT(*) AS docs,
@@ -334,7 +368,7 @@ def get_document_stats(user_id):
 # ── Chats ──────────────────────────────────────────────────────────
 
 def create_chat(user_id, title="New Chat"):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO chats (user_id, title) VALUES (%s,%s) RETURNING *",
@@ -346,7 +380,7 @@ def create_chat(user_id, title="New Chat"):
 
 
 def get_user_chats(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM chats WHERE user_id=%s ORDER BY created_at DESC",
@@ -356,14 +390,14 @@ def get_user_chats(user_id):
 
 
 def update_chat_title(chat_id, title):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE chats SET title=%s WHERE id=%s", (title, chat_id))
         conn.commit()
 
 
 def delete_chat(chat_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM messages WHERE chat_id=%s", (chat_id,))
             cur.execute("DELETE FROM chats WHERE id=%s AND user_id=%s", (chat_id, user_id))
@@ -373,7 +407,7 @@ def delete_chat(chat_id, user_id):
 # ── Messages ───────────────────────────────────────────────────────
 
 def add_message(chat_id, role, content, sources=None, confidence=None, followups=None):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO messages (chat_id, role, content, sources, confidence, followups) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
@@ -385,7 +419,7 @@ def add_message(chat_id, role, content, sources=None, confidence=None, followups
 
 
 def get_chat_messages(chat_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM messages WHERE chat_id=%s ORDER BY created_at ASC",
@@ -397,7 +431,7 @@ def get_chat_messages(chat_id):
 # ── Analytics ──────────────────────────────────────────────────────
 
 def get_analytics(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM documents WHERE user_id=%s", (user_id,))
             docs = cur.fetchone()[0]
@@ -418,7 +452,7 @@ def get_analytics(user_id):
 # ── Message Feedback ───────────────────────────────────────────────
 
 def add_feedback(message_id, rating):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO message_feedback (message_id, rating) VALUES (%s,%s)",
@@ -430,7 +464,7 @@ def add_feedback(message_id, rating):
 # ── Pinned Messages ────────────────────────────────────────────────
 
 def get_pinned(chat_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT pm.id AS pin_id, m.id, m.role, m.content, m.sources, m.created_at
@@ -443,7 +477,7 @@ def get_pinned(chat_id):
 
 
 def pin_message(chat_id, message_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id FROM pinned_messages WHERE chat_id=%s AND message_id=%s",
@@ -458,7 +492,7 @@ def pin_message(chat_id, message_id):
 
 
 def unpin_message(message_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM pinned_messages WHERE message_id=%s", (message_id,))
         conn.commit()
@@ -467,7 +501,7 @@ def unpin_message(message_id):
 # ── Document Tags ──────────────────────────────────────────────────
 
 def add_tag(doc_id, user_id, tag):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO document_tags (doc_id, user_id, tag) VALUES (%s,%s,%s) RETURNING *",
@@ -479,14 +513,14 @@ def add_tag(doc_id, user_id, tag):
 
 
 def remove_tag(tag_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM document_tags WHERE id=%s", (tag_id,))
         conn.commit()
 
 
 def get_doc_tags(doc_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM document_tags WHERE doc_id=%s ORDER BY created_at ASC",
@@ -498,7 +532,7 @@ def get_doc_tags(doc_id):
 # ── Team Members ───────────────────────────────────────────────────
 
 def invite_member(owner_id, email, role="viewer"):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO team_members (owner_id, member_email, role, status)
@@ -511,7 +545,7 @@ def invite_member(owner_id, email, role="viewer"):
 
 
 def get_team(owner_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM team_members WHERE owner_id=%s ORDER BY created_at ASC",
@@ -521,14 +555,14 @@ def get_team(owner_id):
 
 
 def update_member_role(member_id, role):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE team_members SET role=%s WHERE id=%s", (role, member_id))
         conn.commit()
 
 
 def remove_member(member_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM team_members WHERE id=%s", (member_id,))
         conn.commit()
@@ -537,7 +571,7 @@ def remove_member(member_id):
 # ── Message Search ─────────────────────────────────────────────────
 
 def search_messages(user_id, query):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT m.id, m.chat_id, m.role, m.content, m.created_at, c.title AS chat_title
@@ -553,7 +587,7 @@ def search_messages(user_id, query):
 # ── Folders ────────────────────────────────────────────────────────
 
 def create_folder(user_id, name, color='#8b5cf6'):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO folders (user_id, name, color) VALUES (%s,%s,%s) RETURNING *",
@@ -565,7 +599,7 @@ def create_folder(user_id, name, color='#8b5cf6'):
 
 
 def get_user_folders(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM folders WHERE user_id=%s ORDER BY created_at ASC",
@@ -575,7 +609,7 @@ def get_user_folders(user_id):
 
 
 def delete_folder(folder_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             # Unassign docs from folder before deleting
             cur.execute("UPDATE documents SET folder_id=NULL WHERE folder_id=%s AND user_id=%s",
@@ -585,7 +619,7 @@ def delete_folder(folder_id, user_id):
 
 
 def move_document_to_folder(doc_id, user_id, folder_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE documents SET folder_id=%s WHERE id=%s AND user_id=%s",
@@ -597,7 +631,7 @@ def move_document_to_folder(doc_id, user_id, folder_id):
 # ── Document versioning ────────────────────────────────────────────
 
 def get_document_versions(orig_name, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT * FROM documents WHERE user_id=%s AND orig_name=%s
@@ -608,7 +642,7 @@ def get_document_versions(orig_name, user_id):
 
 
 def get_latest_version(orig_name, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT COALESCE(MAX(version),0) FROM documents WHERE user_id=%s AND orig_name=%s",
@@ -621,7 +655,7 @@ def get_latest_version(orig_name, user_id):
 # ── Full-text search across document content ───────────────────────
 
 def search_document_content(user_id, query):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT id, orig_name, file_type, pages,
@@ -645,7 +679,7 @@ def save_chunks(user_id, chunks):
     """Persist chunk texts to DB so vector store can be rebuilt on restart."""
     if not chunks:
         return
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.executemany(
                 """INSERT INTO chunk_store
@@ -664,7 +698,7 @@ def save_chunks(user_id, chunks):
 
 def load_chunks(user_id):
     """Load all chunk texts for a user from DB."""
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT doc_name, page_num, chunk_idx, text, parent_text
@@ -679,7 +713,7 @@ def load_chunks(user_id):
 
 def delete_chunks(user_id, doc_name=None):
     """Delete chunks for a user, optionally filtered by document name."""
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             if doc_name:
                 cur.execute(
@@ -694,7 +728,7 @@ def delete_chunks(user_id, doc_name=None):
 # ── Saved Prompts ──────────────────────────────────────────────────
 
 def get_saved_prompts(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM saved_prompts WHERE user_id=%s ORDER BY created_at DESC",
@@ -704,7 +738,7 @@ def get_saved_prompts(user_id):
 
 
 def create_saved_prompt(user_id, title, prompt):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO saved_prompts (user_id, title, prompt) VALUES (%s,%s,%s) RETURNING *",
@@ -716,7 +750,7 @@ def create_saved_prompt(user_id, title, prompt):
 
 
 def delete_saved_prompt(prompt_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM saved_prompts WHERE id=%s AND user_id=%s",
@@ -730,7 +764,7 @@ def delete_saved_prompt(prompt_id, user_id):
 def create_share_token(chat_id, user_id):
     import secrets
     token = secrets.token_urlsafe(24)
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             # Remove existing share for this chat
             cur.execute("DELETE FROM chat_shares WHERE chat_id=%s AND user_id=%s", (chat_id, user_id))
@@ -744,7 +778,7 @@ def create_share_token(chat_id, user_id):
 
 
 def get_share_by_token(token):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT cs.*, c.title, c.user_id
@@ -756,7 +790,7 @@ def get_share_by_token(token):
 
 
 def get_share_by_chat(chat_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM chat_shares WHERE chat_id=%s AND user_id=%s",
@@ -768,7 +802,7 @@ def get_share_by_chat(chat_id, user_id):
 # ── Chat Branching ─────────────────────────────────────────────────
 
 def create_branch(parent_chat_id, branch_chat_id, branch_msg_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO chat_branches (parent_chat_id, branch_chat_id, branch_msg_id)
@@ -781,7 +815,7 @@ def create_branch(parent_chat_id, branch_chat_id, branch_msg_id):
 
 
 def get_branches(parent_chat_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT cb.*, c.title
@@ -795,13 +829,13 @@ def get_branches(parent_chat_id):
 # ── Saved Prompts ──────────────────────────────────────────────────
 
 def get_saved_prompts(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM saved_prompts WHERE user_id=%s ORDER BY created_at DESC", (user_id,))
             return _row(cur, one=False)
 
 def create_saved_prompt(user_id, title, prompt):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("INSERT INTO saved_prompts (user_id,title,prompt) VALUES (%s,%s,%s) RETURNING *",
                         (user_id, title, prompt))
@@ -810,7 +844,7 @@ def create_saved_prompt(user_id, title, prompt):
     return row
 
 def delete_saved_prompt(prompt_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM saved_prompts WHERE id=%s AND user_id=%s", (prompt_id, user_id))
         conn.commit()
@@ -820,7 +854,7 @@ def delete_saved_prompt(prompt_id, user_id):
 def create_share_token(chat_id, user_id):
     import secrets
     token = secrets.token_urlsafe(20)
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             # Remove existing share for this chat
             cur.execute("DELETE FROM chat_shares WHERE chat_id=%s AND user_id=%s", (chat_id, user_id))
@@ -831,13 +865,13 @@ def create_share_token(chat_id, user_id):
     return row
 
 def get_shared_chat(token):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM chat_shares WHERE token=%s", (token,))
             return _row(cur)
 
 def get_messages_by_chat(chat_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM messages WHERE chat_id=%s ORDER BY created_at ASC", (chat_id,))
             return _row(cur, one=False)
@@ -845,7 +879,7 @@ def get_messages_by_chat(chat_id):
 # ── Chat Branching ─────────────────────────────────────────────────
 
 def create_branch(parent_chat_id, branch_chat_id, from_message_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO chat_branches (parent_chat_id,branch_chat_id,from_message_id) VALUES (%s,%s,%s)",
@@ -854,7 +888,7 @@ def create_branch(parent_chat_id, branch_chat_id, from_message_id):
         conn.commit()
 
 def get_message_by_id(msg_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM messages WHERE id=%s", (msg_id,))
             return _row(cur)
@@ -863,13 +897,13 @@ def get_message_by_id(msg_id):
 # ── Collections ────────────────────────────────────────────────────
 
 def get_user_collections(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM collections WHERE user_id=%s ORDER BY created_at DESC", (user_id,))
             return _row(cur, one=False)
 
 def create_collection(user_id, name, description='', color='#8b5cf6'):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("INSERT INTO collections (user_id,name,description,color) VALUES (%s,%s,%s,%s) RETURNING *",
                         (user_id, name, description, color))
@@ -878,26 +912,26 @@ def create_collection(user_id, name, description='', color='#8b5cf6'):
     return row
 
 def delete_collection(col_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM collections WHERE id=%s AND user_id=%s", (col_id, user_id))
         conn.commit()
 
 def add_doc_to_collection(col_id, doc_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("INSERT INTO collection_documents (collection_id,doc_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
                         (col_id, doc_id))
         conn.commit()
 
 def remove_doc_from_collection(col_id, doc_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM collection_documents WHERE collection_id=%s AND doc_id=%s", (col_id, doc_id))
         conn.commit()
 
 def get_collection_docs(col_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""SELECT d.* FROM documents d
                            JOIN collection_documents cd ON d.id=cd.doc_id
@@ -907,14 +941,14 @@ def get_collection_docs(col_id):
 # ── Document expiry ────────────────────────────────────────────────
 
 def set_doc_expiry(doc_id, user_id, expires_at):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE documents SET expires_at=%s WHERE id=%s AND user_id=%s",
                         (expires_at, doc_id, user_id))
         conn.commit()
 
 def get_expired_documents():
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM documents WHERE expires_at IS NOT NULL AND expires_at < NOW()")
             return _row(cur, one=False)
@@ -922,14 +956,14 @@ def get_expired_documents():
 # ── Duplicate detection ────────────────────────────────────────────
 
 def get_doc_by_hash(user_id, file_hash):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM documents WHERE user_id=%s AND file_hash=%s LIMIT 1",
                         (user_id, file_hash))
             return _row(cur)
 
 def set_doc_hash(doc_id, file_hash):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE documents SET file_hash=%s WHERE id=%s", (file_hash, doc_id))
         conn.commit()
@@ -939,7 +973,7 @@ def set_doc_hash(doc_id, file_hash):
 def create_session(user_id, token, device_info='', ip_address=''):
     import hashlib
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""INSERT INTO user_sessions (user_id,token_hash,device_info,ip_address)
                            VALUES (%s,%s,%s,%s) RETURNING *""",
@@ -949,19 +983,19 @@ def create_session(user_id, token, device_info='', ip_address=''):
     return row
 
 def get_user_sessions(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM user_sessions WHERE user_id=%s ORDER BY last_seen DESC", (user_id,))
             return _row(cur, one=False)
 
 def revoke_session(session_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM user_sessions WHERE id=%s AND user_id=%s", (session_id, user_id))
         conn.commit()
 
 def revoke_all_sessions(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM user_sessions WHERE user_id=%s", (user_id,))
         conn.commit()
@@ -969,7 +1003,7 @@ def revoke_all_sessions(user_id):
 def touch_session(token):
     import hashlib
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE user_sessions SET last_seen=NOW() WHERE token_hash=%s", (token_hash,))
         conn.commit()
@@ -977,13 +1011,13 @@ def touch_session(token):
 # ── 2FA (TOTP) ─────────────────────────────────────────────────────
 
 def set_totp_secret(user_id, secret):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET totp_secret=%s, totp_enabled=TRUE WHERE id=%s", (secret, user_id))
         conn.commit()
 
 def disable_totp(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET totp_secret=NULL, totp_enabled=FALSE WHERE id=%s", (user_id,))
         conn.commit()
@@ -991,13 +1025,13 @@ def disable_totp(user_id):
 # ── Email verification & password reset ───────────────────────────
 
 def set_verify_token(user_id, token):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET verify_token=%s WHERE id=%s", (token, user_id))
         conn.commit()
 
 def verify_email(token):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET email_verified=TRUE, verify_token=NULL WHERE verify_token=%s RETURNING id",
                         (token,))
@@ -1006,20 +1040,20 @@ def verify_email(token):
     return row[0] if row else None
 
 def set_reset_token(email, token, expires):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET reset_token=%s, reset_expires=%s WHERE email=%s",
                         (token, expires, email))
         conn.commit()
 
 def get_user_by_reset_token(token):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM users WHERE reset_token=%s AND reset_expires > NOW()", (token,))
             return _row(cur)
 
 def complete_password_reset(token, new_password):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET password=%s, reset_token=NULL, reset_expires=NULL WHERE reset_token=%s",
                         (new_password, token))
@@ -1029,7 +1063,7 @@ def complete_password_reset(token, new_password):
 # ── Sessions ───────────────────────────────────────────────────────
 
 def create_session(user_id, token_hash, device_info='', ip_address=''):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO user_sessions (user_id, token_hash, device_info, ip_address)
@@ -1041,7 +1075,7 @@ def create_session(user_id, token_hash, device_info='', ip_address=''):
     return row
 
 def get_user_sessions(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM user_sessions WHERE user_id=%s ORDER BY last_seen DESC",
@@ -1050,13 +1084,13 @@ def get_user_sessions(user_id):
             return _row(cur, one=False)
 
 def revoke_session(session_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM user_sessions WHERE id=%s AND user_id=%s", (session_id, user_id))
         conn.commit()
 
 def revoke_all_sessions(user_id, except_hash=None):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             if except_hash:
                 cur.execute("DELETE FROM user_sessions WHERE user_id=%s AND token_hash!=%s", (user_id, except_hash))
@@ -1065,13 +1099,13 @@ def revoke_all_sessions(user_id, except_hash=None):
         conn.commit()
 
 def touch_session(token_hash):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE user_sessions SET last_seen=NOW() WHERE token_hash=%s", (token_hash,))
         conn.commit()
 
 def session_exists(token_hash):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM user_sessions WHERE token_hash=%s", (token_hash,))
             return cur.fetchone() is not None
@@ -1079,13 +1113,13 @@ def session_exists(token_hash):
 # ── Email verification & password reset ───────────────────────────
 
 def set_verify_token(user_id, token):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET verify_token=%s WHERE id=%s", (token, user_id))
         conn.commit()
 
 def verify_email(token):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM users WHERE verify_token=%s", (token,))
             user = _row(cur)
@@ -1095,7 +1129,7 @@ def verify_email(token):
     return user
 
 def set_reset_token(email, token, expires):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE users SET reset_token=%s, reset_expires=%s WHERE email=%s",
@@ -1104,7 +1138,7 @@ def set_reset_token(email, token, expires):
         conn.commit()
 
 def get_user_by_reset_token(token):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM users WHERE reset_token=%s AND reset_expires > NOW()",
@@ -1113,7 +1147,7 @@ def get_user_by_reset_token(token):
             return _row(cur)
 
 def clear_reset_token(user_id, new_password):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE users SET password=%s, reset_token=NULL, reset_expires=NULL WHERE id=%s",
@@ -1124,19 +1158,19 @@ def clear_reset_token(user_id, new_password):
 # ── 2FA / TOTP ─────────────────────────────────────────────────────
 
 def set_totp_secret(user_id, secret):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET totp_secret=%s, totp_enabled=FALSE WHERE id=%s", (secret, user_id))
         conn.commit()
 
 def enable_totp(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET totp_enabled=TRUE WHERE id=%s", (user_id,))
         conn.commit()
 
 def disable_totp(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET totp_secret=NULL, totp_enabled=FALSE WHERE id=%s", (user_id,))
         conn.commit()
@@ -1144,7 +1178,7 @@ def disable_totp(user_id):
 # ── Workspaces ─────────────────────────────────────────────────────
 
 def create_workspace(owner_id, name, description=''):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO workspaces (owner_id,name,description) VALUES (%s,%s,%s) RETURNING *",
@@ -1156,7 +1190,7 @@ def create_workspace(owner_id, name, description=''):
 
 def get_user_workspaces(user_id):
     """Return workspaces owned by or member of."""
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT DISTINCT w.*, u.name AS owner_name,
@@ -1170,19 +1204,19 @@ def get_user_workspaces(user_id):
             return _row(cur, one=False)
 
 def get_workspace(workspace_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT w.*, u.name AS owner_name FROM workspaces w JOIN users u ON u.id=w.owner_id WHERE w.id=%s", (workspace_id,))
             return _row(cur)
 
 def delete_workspace(workspace_id, owner_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM workspaces WHERE id=%s AND owner_id=%s", (workspace_id, owner_id))
         conn.commit()
 
 def get_workspace_members(workspace_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT wm.*, u.name AS user_name
@@ -1194,7 +1228,7 @@ def get_workspace_members(workspace_id):
 
 def invite_workspace_member(workspace_id, email, role, invited_by):
     import secrets
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             # If already an active member, block
             cur.execute(
@@ -1226,7 +1260,7 @@ def invite_workspace_member(workspace_id, email, role, invited_by):
 
 
 def get_workspace_invite_by_token(token):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT wm.*, w.name AS workspace_name, u.name AS inviter_name
@@ -1239,7 +1273,7 @@ def get_workspace_invite_by_token(token):
 
 
 def accept_workspace_invite(token, user_id, email):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 UPDATE workspace_members
@@ -1252,7 +1286,7 @@ def accept_workspace_invite(token, user_id, email):
     return row
 
 def remove_workspace_member(workspace_id, member_id, requester_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             # owner or admin can remove
             cur.execute("SELECT id FROM workspaces WHERE id=%s AND owner_id=%s", (workspace_id, requester_id))
@@ -1277,7 +1311,7 @@ def remove_workspace_member(workspace_id, member_id, requester_id):
     return True
 
 def update_member_role(workspace_id, member_id, role, requester_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM workspaces WHERE id=%s AND owner_id=%s", (workspace_id, requester_id))
             is_owner = cur.fetchone() is not None
@@ -1297,7 +1331,7 @@ def update_member_role(workspace_id, member_id, role, requester_id):
     return True
 
 def update_workspace(workspace_id, requester_id, name, description):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             # owner or admin can edit
             cur.execute("SELECT id FROM workspaces WHERE id=%s AND owner_id=%s", (workspace_id, requester_id))
@@ -1319,7 +1353,7 @@ def update_workspace(workspace_id, requester_id, name, description):
     return row
 
 def can_access_workspace(workspace_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT 1 FROM workspaces WHERE id=%s AND owner_id=%s
@@ -1329,7 +1363,7 @@ def can_access_workspace(workspace_id, user_id):
             return cur.fetchone() is not None
 
 def get_workspace_role(workspace_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM workspaces WHERE id=%s AND owner_id=%s", (workspace_id, user_id))
             if cur.fetchone():
@@ -1340,7 +1374,7 @@ def get_workspace_role(workspace_id, user_id):
 
 
 def add_doc_to_workspace(workspace_id, doc_id, added_by):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO workspace_documents (workspace_id,doc_id,added_by) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
@@ -1349,13 +1383,13 @@ def add_doc_to_workspace(workspace_id, doc_id, added_by):
         conn.commit()
 
 def remove_doc_from_workspace(workspace_id, doc_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM workspace_documents WHERE workspace_id=%s AND doc_id=%s", (workspace_id, doc_id))
         conn.commit()
 
 def get_workspace_documents(workspace_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT d.*, u.name AS uploaded_by_name, wd.added_at
@@ -1371,7 +1405,7 @@ def get_workspace_documents(workspace_id):
 # Message Comments
 
 def add_comment(message_id, user_id, content):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO message_comments (message_id,user_id,content) VALUES (%s,%s,%s) RETURNING *",
@@ -1382,7 +1416,7 @@ def add_comment(message_id, user_id, content):
     return row
 
 def get_comments(message_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT mc.*, u.name AS user_name
@@ -1393,7 +1427,7 @@ def get_comments(message_id):
             return _row(cur, one=False)
 
 def delete_comment(comment_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM message_comments WHERE id=%s AND user_id=%s", (comment_id, user_id))
         conn.commit()
@@ -1403,7 +1437,7 @@ def delete_comment(comment_id, user_id):
 
 def log_activity(user_id, action, target_type='', target_id=None, target_name='', workspace_id=None):
     try:
-        with get_conn() as conn:
+        with _conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO activity_log (user_id,workspace_id,action,target_type,target_id,target_name) VALUES (%s,%s,%s,%s,%s,%s)",
@@ -1414,7 +1448,7 @@ def log_activity(user_id, action, target_type='', target_id=None, target_name=''
         print(f"[Activity] log failed: {e}")
 
 def get_activity(user_id, workspace_id=None, limit=50):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             if workspace_id:
                 cur.execute(
@@ -1436,7 +1470,7 @@ def get_activity(user_id, workspace_id=None, limit=50):
 # Enhanced Analytics
 
 def get_analytics_extended(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM documents WHERE user_id=%s", (user_id,))
             docs = cur.fetchone()[0]
@@ -1485,7 +1519,7 @@ def get_analytics_extended(user_id):
 
 def get_analytics_full(user_id):
     """Full analytics: usage dashboard, page heatmap, topic clusters, quality trend."""
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             # ── Queries per day (last 30 days) ──────────────────────
             cur.execute("""
@@ -1582,7 +1616,7 @@ def get_analytics_full(user_id):
 
 def get_analytics_csv(user_id):
     """Return raw data rows for CSV export."""
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT DATE(m.created_at) AS day, COUNT(*) AS queries
@@ -1624,20 +1658,20 @@ def get_tier_limits(tier):
     return TIER_LIMITS.get(tier, TIER_LIMITS["free"])
 
 def get_user_tier(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT tier FROM users WHERE id=%s", (user_id,))
             row = cur.fetchone()
             return row[0] if row else "free"
 
 def set_user_tier(user_id, tier):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET tier=%s WHERE id=%s", (tier, user_id))
         conn.commit()
 
 def count_user_queries_today(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT COUNT(*) FROM messages m JOIN chats c ON c.id=m.chat_id
@@ -1655,7 +1689,7 @@ def check_tier_limit(user_id, resource):
         limit = limits["queries_per_day"]
         return current < limit, limit, current
     if resource == "docs":
-        with get_conn() as conn:
+        with _conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT COUNT(*) FROM documents WHERE user_id=%s", (user_id,))
                 current = cur.fetchone()[0]
@@ -1671,7 +1705,7 @@ def create_api_key(user_id, label="Default"):
     raw = "lx_" + secrets.token_urlsafe(32)
     key_hash = hashlib.sha256(raw.encode()).hexdigest()
     prefix = raw[:10]
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO api_keys (user_id,key_hash,key_prefix,label) VALUES (%s,%s,%s,%s) RETURNING id,key_prefix,label,created_at",
@@ -1683,7 +1717,7 @@ def create_api_key(user_id, label="Default"):
     return row
 
 def get_user_api_keys(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id,key_prefix,label,last_used,created_at FROM api_keys WHERE user_id=%s ORDER BY created_at DESC",
@@ -1692,7 +1726,7 @@ def get_user_api_keys(user_id):
             return _row(cur, one=False)
 
 def delete_api_key(key_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM api_keys WHERE id=%s AND user_id=%s", (key_id, user_id))
         conn.commit()
@@ -1700,7 +1734,7 @@ def delete_api_key(key_id, user_id):
 def get_user_by_api_key(raw_key):
     import hashlib
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT u.* FROM users u
@@ -1717,7 +1751,7 @@ def get_user_by_api_key(raw_key):
 # ── Admin ──────────────────────────────────────────────────────────
 
 def get_all_users(limit=100, offset=0):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT u.id, u.name, u.email, u.tier, u.is_admin, u.created_at,
@@ -1732,7 +1766,7 @@ def get_all_users(limit=100, offset=0):
             return _row(cur, one=False)
 
 def get_platform_stats():
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM users")
             total_users = cur.fetchone()[0]
@@ -1747,13 +1781,13 @@ def get_platform_stats():
             "total_queries": total_queries, "tiers": tiers}
 
 def admin_set_tier(target_user_id, tier):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET tier=%s WHERE id=%s", (tier, target_user_id))
         conn.commit()
 
 def admin_delete_user(target_user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM users WHERE id=%s", (target_user_id,))
         conn.commit()
@@ -1762,13 +1796,13 @@ def admin_delete_user(target_user_id):
 # ── White-label ────────────────────────────────────────────────────
 
 def get_white_label(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM white_label WHERE user_id=%s", (user_id,))
             return _row(cur)
 
 def save_white_label(user_id, app_name, logo_url, primary_color):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO white_label (user_id,app_name,logo_url,primary_color)
@@ -1783,7 +1817,7 @@ def save_white_label(user_id, app_name, logo_url, primary_color):
 # ── Webhooks ───────────────────────────────────────────────────────
 
 def create_webhook(user_id, url, events='document_uploaded,query_made', secret=''):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO webhooks (user_id,url,events,secret) VALUES (%s,%s,%s,%s) RETURNING *",
@@ -1794,19 +1828,19 @@ def create_webhook(user_id, url, events='document_uploaded,query_made', secret='
     return row
 
 def get_user_webhooks(user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM webhooks WHERE user_id=%s ORDER BY created_at DESC", (user_id,))
             return _row(cur, one=False)
 
 def delete_webhook(webhook_id, user_id):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM webhooks WHERE id=%s AND user_id=%s", (webhook_id, user_id))
         conn.commit()
 
 def get_active_webhooks(user_id, event):
-    with get_conn() as conn:
+    with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT * FROM webhooks WHERE user_id=%s AND active=TRUE AND events LIKE %s",

@@ -726,7 +726,39 @@ html.dark .tt-thumb{transform:translateX(16px)}
   .modal-box{
     width:100%;max-width:100%;margin:0;
     border-radius:18px 18px 0 0;
-    max-height:90dvh;overflow-y:auto;
+    max-height:92dvh;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:env(safe-area-inset-bottom, 0px);
+  }
+  /* Ensure modal body content + buttons are always scrollable above keyboard */
+  .modal-box .modal-body,
+  .modal-box > div[style*="flex-direction:column"],
+  .modal-box > div[style*="flex-direction: column"] {
+    padding-bottom:1.5rem;
+  }
+  /* New Folder / New Workspace / Invite modals — make inner content scroll */
+  .modal-box .pp-save-btn,
+  .modal-box button[onclick*="create"],
+  .modal-box button[onclick*="invite"],
+  .modal-box button[onclick*="save"] {
+    position:sticky;
+    bottom:0;
+    z-index:2;
+  }
+  /* Profile popup mobile keyboard fix */
+  .profile-popup {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 20px 20px 0 0;
+    max-height: 92dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* ── Workspace ── */

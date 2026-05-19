@@ -794,7 +794,7 @@ html.dark .tt-thumb{transform:translateX(16px)}
 
   /* Push content above bottom nav */
   .main{padding-bottom:56px}
-  .chat-foot{padding-bottom:calc(.65rem + 56px)}
+  .chat-foot{padding-bottom:.65rem}
 }
 
 /* Light mode mobile */

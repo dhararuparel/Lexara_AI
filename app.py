@@ -128,7 +128,12 @@ def signup():
     vtoken = _sec.token_urlsafe(32)
     from database import set_verify_token
     set_verify_token(user["id"], vtoken)
-    _th.Thread(target=send_verification_email, args=(email, name, vtoken, request.host_url), daemon=True).start()
+    _v_url = request.host_url
+    _v_ctx = app.app_context()
+    def _send_verify():
+        with _v_ctx:
+            send_verification_email(email, name, vtoken, _v_url)
+    _th.Thread(target=_send_verify, daemon=True).start()
 
     token = generate_token(user["id"], user["email"])
     _track_session(user["id"], token)
@@ -1045,7 +1050,12 @@ def resend_verification(current_user):
     from database import set_verify_token
     vtoken = _sec.token_urlsafe(32)
     set_verify_token(current_user["id"], vtoken)
-    _th.Thread(target=send_verification_email, args=(current_user["email"], current_user["name"], vtoken, request.host_url), daemon=True).start()
+    _rv_url = request.host_url
+    _rv_ctx = app.app_context()
+    def _send_rv():
+        with _rv_ctx:
+            send_verification_email(current_user["email"], current_user["name"], vtoken, _rv_url)
+    _th.Thread(target=_send_rv, daemon=True).start()
     return jsonify({"message": "Verification email sent"})
 
 
@@ -1062,7 +1072,13 @@ def forgot_password():
         token = _sec.token_urlsafe(32)
         expires = _dt.datetime.utcnow() + _dt.timedelta(hours=1)
         set_reset_token(email, token, expires)
-        _th.Thread(target=send_reset_email, args=(email, user["name"], token, request.host_url), daemon=True).start()
+        _r_url = request.host_url
+        _r_ctx = app.app_context()
+        _r_name = user["name"]
+        def _send_reset():
+            with _r_ctx:
+                send_reset_email(email, _r_name, token, _r_url)
+        _th.Thread(target=_send_reset, daemon=True).start()
     # Always return success to prevent email enumeration
     return jsonify({"message": "If that email exists, a reset link has been sent"})
 
@@ -1241,11 +1257,11 @@ def invite_ws_member(current_user, ws_id):
     _host_url = request.host_url
     _inviter  = current_user["name"]
     _ws_name  = ws["name"]
-    threading.Thread(
-        target=send_workspace_invite_email,
-        args=(email, _inviter, _ws_name, role, _token, _host_url),
-        daemon=True
-    ).start()
+    _app_ctx  = app.app_context()
+    def _send_invite():
+        with _app_ctx:
+            send_workspace_invite_email(email, _inviter, _ws_name, role, _token, _host_url)
+    threading.Thread(target=_send_invite, daemon=True).start()
     log_activity(current_user["id"], "invited_member", "workspace", ws_id, email)
     return jsonify({"member": member})
 

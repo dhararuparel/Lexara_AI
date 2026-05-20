@@ -1552,7 +1552,10 @@ function renderWsGrid() {
       </div>
       <div class="ws-card-footer">
         <span style="font-size:.7rem;color:var(--text3)">${ws.created_at ? ws.created_at.slice(0,10) : ''}</span>
-        ${ws.my_role === 'owner' ? `<button class="ws-del-btn" onclick="event.stopPropagation();deleteWorkspace(${ws.id})">🗑 Delete</button>` : ''}
+        <div style="display:flex;gap:.35rem">
+          ${ws.my_role === 'owner' || ws.my_role === 'admin' ? `<button class="ws-del-btn" style="background:rgba(139,92,246,.15);border-color:rgba(139,92,246,.3);color:var(--purple-l)" onclick="event.stopPropagation();currentWsId=${ws.id};openInviteModal(${ws.id})">+ Invite</button>` : ''}
+          ${ws.my_role === 'owner' ? `<button class="ws-del-btn" onclick="event.stopPropagation();deleteWorkspace(${ws.id})">🗑 Delete</button>` : ''}
+        </div>
       </div>
     </div>
   `).join('');
@@ -1733,7 +1736,8 @@ async function updateMemberRole(memberId, role) {
   toast('Role updated', 'success');
 }
 
-function openInviteModal() {
+function openInviteModal(wsId) {
+  if (wsId) currentWsId = wsId;
   document.getElementById('inviteEmail').value = '';
   document.getElementById('inviteModal').classList.remove('hidden');
 }
@@ -1742,6 +1746,7 @@ async function inviteMember() {
   const email = document.getElementById('inviteEmail').value.trim().toLowerCase();
   const role  = document.getElementById('inviteRole').value;
   if (!email) { toast('Email required', 'warning'); return; }
+  if (!currentWsId) { toast('Please open a workspace first', 'warning'); return; }
   const r = await api(`/api/workspaces/${currentWsId}/members`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},

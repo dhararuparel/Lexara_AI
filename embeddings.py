@@ -1,31 +1,58 @@
 ﻿"""
-Embeddings - Uses FastEmbed (ONNX-based, no PyTorch/CUDA needed) for fast startup.
-Model: BAAI/bge-small-en-v1.5 — 384 dims, ~130MB, CPU-only
+Embeddings - Uses Gemini text-embedding-004 API.
+No local model loaded — zero RAM overhead.
+Dimension: 768 (text-embedding-004 default)
 """
 
+import os
 import numpy as np
 from typing import List
 
-MODEL_NAME = "BAAI/bge-small-en-v1.5"
-_model = None
+EMBEDDING_MODEL = "text-embedding-004"
+EMBEDDING_DIM   = 768
+
+# Batch size — Gemini embedding API accepts up to 100 texts per call
+_BATCH_SIZE = 50
+
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None:
+        from google import genai
+        _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    return _client
 
 
-def get_model():
-    global _model
-    if _model is None:
-        from fastembed import TextEmbedding
-        _model = TextEmbedding(model_name=MODEL_NAME)
-    return _model
+def _embed_batch_api(texts: List[str]) -> np.ndarray:
+    """Call Gemini embedding API for a batch of texts."""
+    client = _get_client()
+    result = client.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=texts,
+    )
+    # result.embeddings is a list of ContentEmbedding objects
+    vectors = np.array([e.values for e in result.embeddings], dtype="float32")
+    return vectors
 
 
 def embed_texts(texts: List[str], normalize: bool = True) -> np.ndarray:
-    model = get_model()
-    embeddings = list(model.embed(texts))
-    arr = np.array(embeddings, dtype="float32")
+    if not texts:
+        return np.zeros((0, EMBEDDING_DIM), dtype="float32")
+
+    all_vecs = []
+    for i in range(0, len(texts), _BATCH_SIZE):
+        batch = texts[i:i + _BATCH_SIZE]
+        vecs = _embed_batch_api(batch)
+        all_vecs.append(vecs)
+
+    arr = np.vstack(all_vecs).astype("float32")
+
     if normalize:
         norms = np.linalg.norm(arr, axis=1, keepdims=True)
         norms = np.where(norms == 0, 1, norms)
         arr = arr / norms
+
     return arr
 
 
@@ -33,10 +60,17 @@ def embed_query(query: str, normalize: bool = True) -> np.ndarray:
     return embed_texts([query], normalize=normalize)
 
 
-def embed_batch(texts: List[str], batch_size: int = 32, normalize: bool = True) -> np.ndarray:
+def embed_batch(texts: List[str], batch_size: int = 50, normalize: bool = True) -> np.ndarray:
     return embed_texts(texts, normalize=normalize)
 
 
 def get_embedding_dimension() -> int:
-    # BAAI/bge-small-en-v1.5 produces 384-dim embeddings
-    return 384
+    return EMBEDDING_DIM
+
+
+# Legacy — kept so rag_pipeline.py imports don't break
+def get_model():
+    class _Stub:
+        def get_embedding_dimension(self):
+            return EMBEDDING_DIM
+    return _Stub()

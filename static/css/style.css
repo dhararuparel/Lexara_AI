@@ -2218,5 +2218,5 @@ html:not(.dark) .share-url-input { background: #f8faff; border-color: #e2e8f0; c
 .msg-row { padding: .6rem 0; }
 .msg-row + .msg-row { border-top: none; }
 
-.pp-footer{padding:.85rem 1.25rem 1.1rem;border-top:1px solid var(--border);background:var(--card);flex-shrink:0}
+.pp-footer{padding:.85rem 0 .5rem;flex-shrink:0}
 .pp-footer .pp-save-btn{width:100%}

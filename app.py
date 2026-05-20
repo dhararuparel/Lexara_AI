@@ -123,12 +123,12 @@ def signup():
 
     user = create_user(name, email, hash_password(pwd))
 
-    # Send verification email (non-blocking — don't fail signup if mail fails)
-    import secrets as _sec
+    # Send verification email in background — don't block signup
+    import secrets as _sec, threading as _th
     vtoken = _sec.token_urlsafe(32)
     from database import set_verify_token
     set_verify_token(user["id"], vtoken)
-    send_verification_email(email, name, vtoken, request.host_url)
+    _th.Thread(target=send_verification_email, args=(email, name, vtoken, request.host_url), daemon=True).start()
 
     token = generate_token(user["id"], user["email"])
     _track_session(user["id"], token)
@@ -1041,11 +1041,11 @@ def verify_email_route():
 def resend_verification(current_user):
     if current_user.get("email_verified"):
         return jsonify({"message": "Already verified"})
-    import secrets as _sec
+    import secrets as _sec, threading as _th
     from database import set_verify_token
     vtoken = _sec.token_urlsafe(32)
     set_verify_token(current_user["id"], vtoken)
-    send_verification_email(current_user["email"], current_user["name"], vtoken, request.host_url)
+    _th.Thread(target=send_verification_email, args=(current_user["email"], current_user["name"], vtoken, request.host_url), daemon=True).start()
     return jsonify({"message": "Verification email sent"})
 
 
@@ -1057,12 +1057,12 @@ def forgot_password():
     email = data.get("email", "").strip().lower()
     user = get_user_by_email(email)
     if user:
-        import secrets as _sec, datetime as _dt
+        import secrets as _sec, datetime as _dt, threading as _th
         from database import set_reset_token
         token = _sec.token_urlsafe(32)
         expires = _dt.datetime.utcnow() + _dt.timedelta(hours=1)
         set_reset_token(email, token, expires)
-        send_reset_email(email, user["name"], token, request.host_url)
+        _th.Thread(target=send_reset_email, args=(email, user["name"], token, request.host_url), daemon=True).start()
     # Always return success to prevent email enumeration
     return jsonify({"message": "If that email exists, a reset link has been sent"})
 
@@ -1219,6 +1219,7 @@ def get_ws_members(current_user, ws_id):
 def invite_ws_member(current_user, ws_id):
     from database import invite_workspace_member, get_workspace, get_workspace_role, log_activity
     from mailer import send_workspace_invite_email
+    import threading
     ws = get_workspace(ws_id)
     if not ws:
         return jsonify({"error": "Workspace not found"}), 404
@@ -1235,15 +1236,16 @@ def invite_ws_member(current_user, ws_id):
     member = invite_workspace_member(ws_id, email, role, current_user["id"])
     if not member:
         return jsonify({"error": "Already a member"}), 409
-    # Send invitation email
-    send_workspace_invite_email(
-        to_email=email,
-        inviter_name=current_user["name"],
-        workspace_name=ws["name"],
-        role=role,
-        token=member["invite_token"],
-        base_url=request.host_url
-    )
+    # Send email in background — don't block the response
+    _token    = member["invite_token"]
+    _host_url = request.host_url
+    _inviter  = current_user["name"]
+    _ws_name  = ws["name"]
+    threading.Thread(
+        target=send_workspace_invite_email,
+        args=(email, _inviter, _ws_name, role, _token, _host_url),
+        daemon=True
+    ).start()
     log_activity(current_user["id"], "invited_member", "workspace", ws_id, email)
     return jsonify({"member": member})
 

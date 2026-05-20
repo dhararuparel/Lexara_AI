@@ -21,7 +21,7 @@ def _get_pool():
     if _pool is None:
         _pool = pool.ThreadedConnectionPool(
             minconn=1,
-            maxconn=10,
+            maxconn=3,
             dsn=DATABASE_URL,
             connect_timeout=10,
         )

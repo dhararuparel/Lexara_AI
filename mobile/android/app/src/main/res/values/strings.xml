@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Lexara AI</string>
-    <string name="title_activity_main">Lexara AI</string>
-    <string name="package_name">ai.lexara.app</string>
-    <string name="custom_url_scheme">ai.lexara.app</string>
-</resources>

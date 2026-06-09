@@ -54,3 +54,9 @@ Thumbs.db
 *.pkl
 temp/
 uploads/
+
+# Node & Mobile build wrappers
+node_modules/
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/local.properties

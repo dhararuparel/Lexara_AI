@@ -86,7 +86,25 @@ def allowed_file(filename):
     return os.path.splitext(filename)[1].lower() in ALLOWED_EXTENSIONS
 
 
+# ── PWA Support Routes ──────────────────────────────────────────────
+
+@app.route("/manifest.json")
+def serve_manifest():
+    from flask import send_from_directory
+    return send_from_directory("static", "manifest.json")
+
+
+@app.route("/sw.js")
+def serve_sw():
+    from flask import send_from_directory
+    response = make_response(send_from_directory("static", "sw.js"))
+    response.headers["Content-Type"] = "application/javascript"
+    response.headers["Service-Worker-Allowed"] = "/"
+    return response
+
+
 # ── Pages ──────────────────────────────────────────────────────────
+
 
 @app.route("/")
 def index():

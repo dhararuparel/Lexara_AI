@@ -1,0 +1,12 @@
+{
+  "appId": "ai.lexara.app",
+  "appName": "Lexara AI",
+  "webDir": "www",
+  "server": {
+    "url": "https://lexara-ai.vercel.app",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

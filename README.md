@@ -1,4 +1,4 @@
-# DocuMind AI - RAG-Based Intelligent Knowledge Assistant
+# LEXARA AI - RAG-Based Intelligent Knowledge Assistant
 
 A Generative AI-powered knowledge assistant that allows users to upload documents and interact with them using natural language queries through Retrieval-Augmented Generation (RAG).
 

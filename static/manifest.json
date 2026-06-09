@@ -2,6 +2,8 @@
   "name": "Lexara AI",
   "short_name": "Lexara",
   "description": "Lexara AI — Turn your documents into conversations, powered by Gemini.",
+  "id": "/",
+  "scope": "/",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",
@@ -54,6 +56,22 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/static/icons/screenshot-desktop.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Lexara AI Desktop Dashboard"
+    },
+    {
+      "src": "/static/icons/screenshot-mobile.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Lexara AI Mobile Interface"
     }
   ]
 }

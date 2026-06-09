@@ -2,7 +2,6 @@ const CACHE_NAME = "lexara-ai-cache-v1";
 
 // Assets to pre-cache on service worker install
 const PRECACHE_ASSETS = [
-  "/",
   "/login",
   "/static/css/style.css",
   "/static/css/login.css",
@@ -71,16 +70,27 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          // Cache the successful page response
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
+          // Cache the successful page response ONLY if it returns 200 OK
+          if (response.status === 200) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseClone);
+            });
+          }
           return response;
         })
         .catch(() => {
-          // If offline, serve from cache
-          return caches.match(event.request);
+          // If offline, serve from cache, with a fallback to /login for root requests
+          return caches.match(event.request).then((cachedResponse) => {
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            if (requestUrl.pathname === "/") {
+              // Root is not in cache (user was logged out), fallback to /login to ensure a 200 response
+              return caches.match("/login");
+            }
+            return null;
+          });
         })
     );
     return;

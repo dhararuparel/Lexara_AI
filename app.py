@@ -18,6 +18,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*sparse_softmax_cross_entropy.*")
 from flask import Flask, request, jsonify, render_template, Response, stream_with_context, make_response, redirect, session
 from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 from dotenv import load_dotenv
 from authlib.integrations.flask_client import OAuth
 
@@ -38,6 +39,7 @@ load_dotenv()
 init_db()
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 app.secret_key = os.getenv("SECRET_KEY", "Lexara-secret")

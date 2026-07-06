@@ -756,16 +756,48 @@ def export_chat(current_user, chat_id):
 @app.route("/auth/google")
 def google_login():
     redirect_uri = request.host_url.rstrip("/") + "/auth/google/callback"
+    if not redirect_uri.startswith("https://") and "localhost" not in redirect_uri and "127.0.0.1" not in redirect_uri:
+        redirect_uri = redirect_uri.replace("http://", "https://")
     return oauth.google.authorize_redirect(redirect_uri)
 
 
 @app.route("/auth/google/callback")
 def google_callback():
-    token = oauth.google.authorize_access_token()
-    userinfo = token.get("userinfo") or oauth.google.userinfo()
+    redirect_uri = request.host_url.rstrip("/") + "/auth/google/callback"
+    if not redirect_uri.startswith("https://") and "localhost" not in redirect_uri and "127.0.0.1" not in redirect_uri:
+        redirect_uri = redirect_uri.replace("http://", "https://")
+
+    try:
+        # Pass redirect_uri explicitly for strict matching
+        token = oauth.google.authorize_access_token(redirect_uri=redirect_uri)
+    except Exception as e:
+        app.logger.warning(f"Google authorize_access_token with redirect_uri failed: {e}. Trying without redirect_uri...")
+        token = oauth.google.authorize_access_token()
+
+    userinfo = token.get("userinfo")
+    if not userinfo:
+        try:
+            userinfo = oauth.google.parse_id_token(token)
+        except Exception as e:
+            app.logger.warning(f"Failed to parse Google ID token: {e}")
+            userinfo = None
+
+    if not userinfo:
+        try:
+            # Fallback to fetching userinfo from endpoint
+            resp = oauth.google.get("userinfo", token=token)
+            userinfo = resp.json()
+        except Exception as e:
+            app.logger.error(f"Failed to fetch userinfo from endpoint: {e}")
+            userinfo = None
+
+    if not userinfo or "email" not in userinfo:
+        return redirect("/login?error=no_email")
+
     email = userinfo["email"].lower()
     name  = userinfo.get("name", email.split("@")[0])
     return _oauth_login_or_create(name, email)
+
 
 
 # ── GitHub OAuth ───────────────────────────────────────────────────

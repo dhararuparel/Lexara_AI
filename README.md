@@ -2,18 +2,7 @@
 
 <br/>
 
-```
-  ██╗     ███████╗██╗  ██╗ █████╗ ██████╗  █████╗      █████╗ ██╗
-  ██║     ██╔════╝╚██╗██╔╝██╔══██╗██╔══██╗██╔══██╗    ██╔══██╗██║
-  ██║     █████╗   ╚███╔╝ ███████║██████╔╝███████║    ███████║██║
-  ██║     ██╔══╝   ██╔██╗ ██╔══██║██╔══██╗██╔══██║    ██╔══██║██║
-  ███████╗███████╗██╔╝ ██╗██║  ██║██║  ██║██║  ██║    ██║  ██║██║
-  ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝    ╚═╝  ╚═╝╚═╝
-```
-
-### **Enterprise-Grade RAG-Powered Document Intelligence Platform**
-
-*Transform your documents into an intelligent, conversational knowledge base — powered by Google Gemini*
+![Lexara AI Banner](static/lexara_banner.png)
 
 <br/>
 

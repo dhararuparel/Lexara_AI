@@ -2,7 +2,7 @@
 
 <br/>
 
-![Lexara AI Banner](static/lexara_banner.png)
+![Lexara AI Banner](static/lexara_banner_v2.png)
 
 <br/>
 

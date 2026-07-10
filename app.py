@@ -35,6 +35,14 @@ from mailer import init_mail, send_verification_email, send_reset_email
 
 from storage import save_file, get_file_path, delete_file, get_file_size
 from rate_limiter import init_rate_limiter
+from validators import (
+    validate_json, validate_args,
+    SIGNUP_SCHEMA, LOGIN_SCHEMA, FORGOT_PASSWORD_SCHEMA, RESET_PASSWORD_SCHEMA, RESET_PAGE_SCHEMA,
+    TOTP_CODE_SCHEMA, UPDATE_PROFILE_SCHEMA, ASK_SCHEMA, FOLDER_SCHEMA, COMPARE_SCHEMA,
+    SEARCH_SCHEMA, PROMPT_SCHEMA, WORKSPACE_POST_SCHEMA, WORKSPACE_PATCH_SCHEMA,
+    WORKSPACE_MEMBER_SCHEMA, WORKSPACE_MEMBER_ROLE_SCHEMA, INGEST_URL_SCHEMA, FEEDBACK_SCHEMA,
+    PIN_MSG_SCHEMA
+)
 
 load_dotenv()
 init_db()
@@ -145,6 +153,7 @@ def login_page():
 # ── Auth ───────────────────────────────────────────────────────────
 
 @app.route("/api/auth/signup", methods=["POST"])
+@validate_json(SIGNUP_SCHEMA)
 def signup():
     data = request.get_json() or {}
     name  = data.get("name", "").strip()
@@ -180,6 +189,7 @@ def signup():
 
 
 @app.route("/api/auth/login", methods=["POST"])
+@validate_json(LOGIN_SCHEMA)
 def login():
     data = request.get_json() or {}
     email = data.get("email", "").strip().lower()
@@ -392,6 +402,7 @@ def get_messages(current_user, chat_id):
 
 @app.route("/api/chats/<int:chat_id>/ask", methods=["POST"])
 @require_auth
+@validate_json(ASK_SCHEMA)
 def ask(current_user, chat_id):
     data     = request.get_json() or {}
     question = data.get("question", "").strip()
@@ -456,6 +467,7 @@ def ask(current_user, chat_id):
 
 @app.route("/api/auth/update", methods=["POST"])
 @require_auth
+@validate_json(UPDATE_PROFILE_SCHEMA)
 def update_profile(current_user):
     data = request.get_json() or {}
     name = data.get("name", "").strip()
@@ -529,6 +541,7 @@ def suggest(current_user):
 
 @app.route("/api/ingest/url", methods=["POST"])
 @require_auth
+@validate_json(INGEST_URL_SCHEMA)
 def ingest_url(current_user):
     data = request.get_json() or {}
     url = data.get("url", "").strip()
@@ -545,6 +558,7 @@ def ingest_url(current_user):
 
 @app.route("/api/ingest/youtube", methods=["POST"])
 @require_auth
+@validate_json(INGEST_URL_SCHEMA)
 def ingest_youtube(current_user):
     data = request.get_json() or {}
     url = data.get("url", "").strip()
@@ -563,6 +577,7 @@ def ingest_youtube(current_user):
 
 @app.route("/api/messages/<int:msg_id>/feedback", methods=["POST"])
 @require_auth
+@validate_json(FEEDBACK_SCHEMA)
 def message_feedback(current_user, msg_id):
     data = request.get_json() or {}
     rating = data.get("rating")
@@ -577,6 +592,7 @@ def message_feedback(current_user, msg_id):
 
 @app.route("/api/messages/<int:msg_id>/pin", methods=["POST"])
 @require_auth
+@validate_json(PIN_MSG_SCHEMA)
 def pin_msg(current_user, msg_id):
     data = request.get_json() or {}
     chat_id = data.get("chat_id")
@@ -619,6 +635,7 @@ def get_doc_tags_route(current_user, doc_id):
 
 @app.route("/api/search", methods=["GET"])
 @require_auth
+@validate_args(SEARCH_SCHEMA)
 def search_chats(current_user):
     q = request.args.get("q", "").strip()
     if not q:
@@ -870,6 +887,7 @@ def list_folders(current_user):
 
 @app.route("/api/folders", methods=["POST"])
 @require_auth
+@validate_json(FOLDER_SCHEMA)
 def create_folder_route(current_user):
     from database import create_folder
     data = request.get_json() or {}
@@ -916,6 +934,7 @@ def doc_versions(current_user, doc_id):
 
 @app.route("/api/documents/compare", methods=["POST"])
 @require_auth
+@validate_json(COMPARE_SCHEMA)
 def compare_docs(current_user):
     data  = request.get_json() or {}
     doc_a = data.get("doc_a", "").strip()
@@ -931,6 +950,7 @@ def compare_docs(current_user):
 
 @app.route("/api/documents/search", methods=["GET"])
 @require_auth
+@validate_args(SEARCH_SCHEMA)
 def search_docs(current_user):
     q = request.args.get("q", "").strip()
     if not q:
@@ -967,6 +987,7 @@ def list_prompts(current_user):
 
 @app.route("/api/prompts", methods=["POST"])
 @require_auth
+@validate_json(PROMPT_SCHEMA)
 def save_prompt(current_user):
     from database import create_saved_prompt
     data = request.get_json() or {}
@@ -1132,6 +1153,7 @@ def resend_verification(current_user):
 # ── Password reset ─────────────────────────────────────────────────
 
 @app.route("/api/auth/forgot-password", methods=["POST"])
+@validate_json(FORGOT_PASSWORD_SCHEMA)
 def forgot_password():
     data = request.get_json() or {}
     email = data.get("email", "").strip().lower()
@@ -1153,11 +1175,13 @@ def forgot_password():
     return jsonify({"message": "If that email exists, a reset link has been sent"})
 
 @app.route("/reset-password")
+@validate_args(RESET_PAGE_SCHEMA)
 def reset_password_page():
     token = request.args.get("token", "")
     return render_template("reset_password.html", token=token)
 
 @app.route("/api/auth/reset-password", methods=["POST"])
+@validate_json(RESET_PASSWORD_SCHEMA)
 def do_reset_password():
     data = request.get_json() or {}
     token = data.get("token", "")
@@ -1260,6 +1284,7 @@ def list_workspaces(current_user):
 
 @app.route("/api/workspaces", methods=["POST"])
 @require_auth
+@validate_json(WORKSPACE_POST_SCHEMA)
 def create_workspace_route(current_user):
     from database import create_workspace, log_activity
     data = request.get_json() or {}
@@ -1281,6 +1306,7 @@ def delete_workspace_route(current_user, ws_id):
 
 @app.route("/api/workspaces/<int:ws_id>", methods=["PATCH"])
 @require_auth
+@validate_json(WORKSPACE_PATCH_SCHEMA)
 def edit_workspace_route(current_user, ws_id):
     from database import update_workspace
     data = request.get_json() or {}
@@ -1303,6 +1329,7 @@ def get_ws_members(current_user, ws_id):
 
 @app.route("/api/workspaces/<int:ws_id>/members", methods=["POST"])
 @require_auth
+@validate_json(WORKSPACE_MEMBER_SCHEMA)
 def invite_ws_member(current_user, ws_id):
     from database import invite_workspace_member, get_workspace, get_workspace_role, log_activity
     from mailer import send_workspace_invite_email
@@ -1398,6 +1425,7 @@ def remove_ws_member(current_user, ws_id, member_id):
 
 @app.route("/api/workspaces/<int:ws_id>/members/<int:member_id>", methods=["PATCH"])
 @require_auth
+@validate_json(WORKSPACE_MEMBER_ROLE_SCHEMA)
 def update_ws_member_role(current_user, ws_id, member_id):
     from database import update_member_role
     data = request.get_json() or {}

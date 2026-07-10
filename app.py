@@ -34,6 +34,7 @@ from rag_pipeline import RAGPipeline
 from mailer import init_mail, send_verification_email, send_reset_email
 
 from storage import save_file, get_file_path, delete_file, get_file_size
+from rate_limiter import init_rate_limiter
 
 load_dotenv()
 init_db()
@@ -43,6 +44,20 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 app.secret_key = os.getenv("SECRET_KEY", "Lexara-secret")
+
+# Rate Limiting Configuration
+app.config["RATE_LIMIT_ENABLED"] = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+app.config["AUTH_BACKOFF_BASE_SECS"] = int(os.getenv("AUTH_BACKOFF_BASE_SECS", "5"))
+app.config["AUTH_BACKOFF_FACTOR"] = int(os.getenv("AUTH_BACKOFF_FACTOR", "2"))
+app.config["AUTH_BACKOFF_MAX_SECS"] = int(os.getenv("AUTH_BACKOFF_MAX_SECS", "3600"))
+app.config["PUBLIC_LIMIT_MAX"] = int(os.getenv("PUBLIC_LIMIT_MAX", "30"))
+app.config["PUBLIC_LIMIT_WINDOW_SECS"] = int(os.getenv("PUBLIC_LIMIT_WINDOW_SECS", "60"))
+app.config["USER_LIMIT_MAX"] = int(os.getenv("USER_LIMIT_MAX", "120"))
+app.config["USER_LIMIT_WINDOW_SECS"] = int(os.getenv("USER_LIMIT_WINDOW_SECS", "60"))
+
+# Initialize Global Rate Limiter
+init_rate_limiter(app)
+
 
 # Fix datetime serialization for jsonify
 import datetime
@@ -105,6 +120,7 @@ def serve_sw():
     return response
 
 
+
 # ── Pages ──────────────────────────────────────────────────────────
 
 
@@ -123,6 +139,7 @@ def index():
 @app.route("/login")
 def login_page():
     return render_template("login.html")
+
 
 
 # ── Auth ───────────────────────────────────────────────────────────
@@ -1003,6 +1020,7 @@ def view_shared_chat(token):
                            token=token)
 
 
+
 # ── Chat Branching ─────────────────────────────────────────────────
 
 @app.route("/api/chats/<int:chat_id>/branch", methods=["POST"])
@@ -1152,6 +1170,7 @@ def do_reset_password():
         return jsonify({"error": "Invalid or expired reset link"}), 400
     clear_reset_token(user["id"], hash_password(new_pwd))
     return jsonify({"message": "Password reset successfully"})
+
 
 
 # ── 2FA / TOTP ─────────────────────────────────────────────────────
@@ -1344,6 +1363,7 @@ def workspace_invite_info():
 
 @app.route("/api/workspace-invite/accept", methods=["POST"])
 def accept_workspace_invite():
+
     from database import get_workspace_invite_by_token, accept_workspace_invite as db_accept
     from auth import verify_token
     data  = request.get_json() or {}

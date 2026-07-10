@@ -1,4 +1,4 @@
-﻿"""
+"""
 Auth helpers — password hashing, JWT tokens, route decorator.
 """
 
@@ -66,5 +66,7 @@ def require_auth(f):
         if not user:
             return jsonify({"error": "User not found"}), 401
         return f(*args, current_user=user, **kwargs)
+    decorated.requires_auth = True
     return decorated
+
 

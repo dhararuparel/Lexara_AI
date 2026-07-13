@@ -55,6 +55,11 @@ self.addEventListener("activate", (event) => {
 
 // Fetch Event: apply appropriate caching strategies
 self.addEventListener("fetch", (event) => {
+  // Bypass cache for non-HTTP/HTTPS schemes (like chrome-extension://) to avoid Cache API errors
+  if (!event.request.url.startsWith("http:") && !event.request.url.startsWith("https:")) {
+    return;
+  }
+
   const requestUrl = new URL(event.request.url);
 
   // 1. Bypass cache for all API, Auth, and OAuth requests
@@ -74,7 +79,11 @@ self.addEventListener("fetch", (event) => {
           if (response.status === 200) {
             const responseClone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
+              if (event.request.url.startsWith("http:") || event.request.url.startsWith("https:")) {
+                cache.put(event.request, responseClone).catch(err => {
+                  console.warn("[Service Worker] Cache.put failed:", err);
+                });
+              }
             });
           }
           return response;
@@ -104,7 +113,11 @@ self.addEventListener("fetch", (event) => {
         fetch(event.request).then((networkResponse) => {
           if (networkResponse.status === 200) {
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, networkResponse);
+              if (event.request.url.startsWith("http:") || event.request.url.startsWith("https:")) {
+                cache.put(event.request, networkResponse).catch(err => {
+                  console.warn("[Service Worker] Cache.put failed:", err);
+                });
+              }
             });
           }
         }).catch((err) => {
@@ -121,7 +134,11 @@ self.addEventListener("fetch", (event) => {
 
         const responseClone = networkResponse.clone();
         caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseClone);
+          if (event.request.url.startsWith("http:") || event.request.url.startsWith("https:")) {
+            cache.put(event.request, responseClone).catch(err => {
+              console.warn("[Service Worker] Cache.put failed:", err);
+            });
+          }
         });
 
         return networkResponse;

@@ -326,6 +326,11 @@ def init_db():
                 requests INTEGER DEFAULT 0,
                 window_start TIMESTAMPTZ DEFAULT NOW()
             );
+            CREATE TABLE IF NOT EXISTS token_blocklist (
+                token_hash VARCHAR(64) PRIMARY KEY,
+                blacklisted_at TIMESTAMPTZ DEFAULT NOW(),
+                expires_at TIMESTAMPTZ
+            );
             """)
         conn.commit()
 

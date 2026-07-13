@@ -14,7 +14,7 @@ youtube-transcript-api==1.2.4
 pyotp==2.9.0
 qrcode[pil]==8.0
 Flask-Mail==0.10.0
-gunicorn==23.0.0
+gunicorn==26.0.0
 gevent==24.11.1
 cloudinary==1.42.1
 authlib==1.6.12

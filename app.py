@@ -49,6 +49,16 @@ init_db()
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+from flask_cors import CORS
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "")
+origins_list = [o.strip() for o in allowed_origins.split(",") if o.strip()] if allowed_origins else [
+    "http://localhost:3000",
+    "http://localhost:5000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5000"
+]
+CORS(app, origins=origins_list, supports_credentials=True)
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "Lexara-secret")

@@ -277,6 +277,17 @@ def init_db():
                 active      BOOLEAN DEFAULT TRUE,
                 created_at  TIMESTAMPTZ DEFAULT NOW()
             );
+            CREATE TABLE IF NOT EXISTS auth_failures (
+                key TEXT PRIMARY KEY,
+                attempts INTEGER DEFAULT 0,
+                last_failed_at TIMESTAMPTZ DEFAULT NOW(),
+                lockout_until TIMESTAMPTZ
+            );
+            CREATE TABLE IF NOT EXISTS rate_limits (
+                key TEXT PRIMARY KEY,
+                requests INTEGER DEFAULT 0,
+                window_start TIMESTAMPTZ DEFAULT NOW()
+            );
             """)
         conn.commit()
 
@@ -1847,3 +1858,90 @@ def get_active_webhooks(user_id, event):
                 (user_id, f'%{event}%')
             )
             return _row(cur, one=False)
+
+
+# ── Rate Limiting & Security ────────────────────────────────────────
+
+def get_auth_lockout_until(keys):
+    """
+    Checks if any of the keys are currently locked out.
+    Returns the maximum lockout_until timestamp if in the future, or None.
+    """
+    if not keys:
+        return None
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT lockout_until FROM auth_failures WHERE key = ANY(%s) AND lockout_until > NOW()",
+                (keys,)
+            )
+            rows = cur.fetchall()
+            if rows:
+                return max(r[0] for r in rows)
+    return None
+
+def record_auth_failure(keys, base_secs, factor, max_secs):
+    """
+    Increments failed auth attempts for the provided keys and computes the lockout delay.
+    """
+    if not keys:
+        return
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            for key in keys:
+                cur.execute("SELECT attempts FROM auth_failures WHERE key = %s", (key,))
+                row = cur.fetchone()
+                attempts = row[0] + 1 if row else 1
+                
+                # Exponential backoff: Base * (Factor ^ (attempts - 1))
+                delay = min(base_secs * (factor ** (attempts - 1)), max_secs)
+                
+                cur.execute("""
+                    INSERT INTO auth_failures (key, attempts, last_failed_at, lockout_until)
+                    VALUES (%s, %s, NOW(), NOW() + INTERVAL '%s seconds')
+                    ON CONFLICT (key) DO UPDATE SET
+                        attempts = EXCLUDED.attempts,
+                        last_failed_at = EXCLUDED.last_failed_at,
+                        lockout_until = EXCLUDED.lockout_until
+                """, (key, attempts, f"{delay}"))
+        conn.commit()
+
+def clear_auth_failures(keys):
+    """
+    Clears failed auth attempt records for the provided keys.
+    """
+    if not keys:
+        return
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM auth_failures WHERE key = ANY(%s)", (keys,))
+        conn.commit()
+
+def check_sliding_window_rate_limit(key, limit, window_secs):
+    """
+    Checks and updates the sliding rate limit window for a given key.
+    Returns True if rate limit is exceeded, False otherwise.
+    """
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            # Delete expired entries
+            cur.execute(
+                "DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '%s seconds'",
+                (f"{window_secs}",)
+            )
+            
+            cur.execute("SELECT requests, window_start FROM rate_limits WHERE key = %s", (key,))
+            row = cur.fetchone()
+            if row:
+                requests, start_time = row
+                if requests >= limit:
+                    return True
+                cur.execute("UPDATE rate_limits SET requests = requests + 1 WHERE key = %s", (key,))
+            else:
+                cur.execute(
+                    "INSERT INTO rate_limits (key, requests, window_start) VALUES (%s, 1, NOW())",
+                    (key,)
+                )
+        conn.commit()
+    return False
+

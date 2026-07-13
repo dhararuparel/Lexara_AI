@@ -34,6 +34,15 @@ from rag_pipeline import RAGPipeline
 from mailer import init_mail, send_verification_email, send_reset_email
 
 from storage import save_file, get_file_path, delete_file, get_file_size
+from rate_limiter import init_rate_limiter
+from validators import (
+    validate_json, validate_args,
+    SIGNUP_SCHEMA, LOGIN_SCHEMA, FORGOT_PASSWORD_SCHEMA, RESET_PASSWORD_SCHEMA, RESET_PAGE_SCHEMA,
+    TOTP_CODE_SCHEMA, UPDATE_PROFILE_SCHEMA, ASK_SCHEMA, FOLDER_SCHEMA, COMPARE_SCHEMA,
+    SEARCH_SCHEMA, PROMPT_SCHEMA, WORKSPACE_POST_SCHEMA, WORKSPACE_PATCH_SCHEMA,
+    WORKSPACE_MEMBER_SCHEMA, WORKSPACE_MEMBER_ROLE_SCHEMA, INGEST_URL_SCHEMA, FEEDBACK_SCHEMA,
+    PIN_MSG_SCHEMA
+)
 
 load_dotenv()
 init_db()
@@ -43,6 +52,20 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 app.secret_key = os.getenv("SECRET_KEY", "Lexara-secret")
+
+# Rate Limiting Configuration
+app.config["RATE_LIMIT_ENABLED"] = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+app.config["AUTH_BACKOFF_BASE_SECS"] = int(os.getenv("AUTH_BACKOFF_BASE_SECS", "5"))
+app.config["AUTH_BACKOFF_FACTOR"] = int(os.getenv("AUTH_BACKOFF_FACTOR", "2"))
+app.config["AUTH_BACKOFF_MAX_SECS"] = int(os.getenv("AUTH_BACKOFF_MAX_SECS", "3600"))
+app.config["PUBLIC_LIMIT_MAX"] = int(os.getenv("PUBLIC_LIMIT_MAX", "30"))
+app.config["PUBLIC_LIMIT_WINDOW_SECS"] = int(os.getenv("PUBLIC_LIMIT_WINDOW_SECS", "60"))
+app.config["USER_LIMIT_MAX"] = int(os.getenv("USER_LIMIT_MAX", "120"))
+app.config["USER_LIMIT_WINDOW_SECS"] = int(os.getenv("USER_LIMIT_WINDOW_SECS", "60"))
+
+# Initialize Global Rate Limiter
+init_rate_limiter(app)
+
 
 # Fix datetime serialization for jsonify
 import datetime
@@ -59,6 +82,21 @@ init_mail(app)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 rag = RAGPipeline(gemini_api_key=GEMINI_API_KEY)
+
+@app.errorhandler(Exception)
+def handle_global_exception(e):
+    from werkzeug.exceptions import HTTPException
+    app.logger.exception("Unhandled exception occurred: %s", str(e))
+    if isinstance(e, HTTPException):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": e.description}), e.code
+        return make_response(f"<h2>{e.description}</h2>", e.code)
+    if request.path.startswith("/api/"):
+        return jsonify({
+            "error": "Internal Server Error",
+            "message": "An unexpected error occurred. Please try again later."
+        }), 500
+    return make_response("<h2>An unexpected error occurred. Please try again later.</h2>", 500)
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
@@ -88,6 +126,49 @@ def allowed_file(filename):
     return os.path.splitext(filename)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def validate_file_content(file_obj, ext) -> bool:
+    """
+    Validates that the file signature (magic number) matches the expected extension.
+    For text-based formats, validates that they do not contain binary/executable headers.
+    """
+    try:
+        # Read first 2048 bytes to inspect signature
+        header = file_obj.read(2048)
+        file_obj.seek(0) # Reset stream pointer
+        
+        if not header:
+            return False
+
+        if ext == ".pdf":
+            # PDF files must start with %PDF-
+            return header.startswith(b"%PDF")
+            
+        elif ext == ".docx":
+            # DOCX is a ZIP file, starting with PK\x03\x04
+            return header.startswith(b"PK\x03\x04")
+            
+        elif ext in {".txt", ".md"}:
+            # Must be readable text, not binary or ELF/PE executables
+            # Check for ELF signature (b'\x7fELF') or PE signature (b'MZ')
+            if header.startswith(b"\x7fELF") or header.startswith(b"MZ"):
+                return False
+            # Check for high ratio of control/null bytes indicating a binary file
+            # Tolerable control chars: \t (9), \n (10), \r (13)
+            control_chars = sum(1 for b in header if b < 9 or (10 < b < 13) or (13 < b < 32))
+            if control_chars > len(header) * 0.10: # More than 10% control chars implies binary
+                return False
+            # Check if it is valid decodable UTF-8 or ASCII text (ignoring potential decode errors on edge of 2048 cut)
+            try:
+                header.decode("utf-8", errors="ignore")
+                return True
+            except Exception:
+                return False
+                
+        return False
+    except Exception:
+        return False
+
+
 # ── PWA Support Routes ──────────────────────────────────────────────
 
 @app.route("/manifest.json")
@@ -103,6 +184,7 @@ def serve_sw():
     response.headers["Content-Type"] = "application/javascript"
     response.headers["Service-Worker-Allowed"] = "/"
     return response
+
 
 
 # ── Pages ──────────────────────────────────────────────────────────
@@ -125,9 +207,11 @@ def login_page():
     return render_template("login.html")
 
 
+
 # ── Auth ───────────────────────────────────────────────────────────
 
 @app.route("/api/auth/signup", methods=["POST"])
+@validate_json(SIGNUP_SCHEMA)
 def signup():
     data = request.get_json() or {}
     name  = data.get("name", "").strip()
@@ -163,6 +247,7 @@ def signup():
 
 
 @app.route("/api/auth/login", methods=["POST"])
+@validate_json(LOGIN_SCHEMA)
 def login():
     data = request.get_json() or {}
     email = data.get("email", "").strip().lower()
@@ -251,8 +336,22 @@ def upload(current_user):
     for file in files:
         if not file or not file.filename:
             continue
+        ext = os.path.splitext(file.filename)[1].lower()
         if not allowed_file(file.filename):
             results.append({"file": file.filename, "error": "Unsupported file type"})
+            continue
+
+        # Check individual file size (limit to 15MB)
+        file.seek(0, os.SEEK_END)
+        size = file.tell()
+        file.seek(0)
+        if size <= 0 or size > 15 * 1024 * 1024:
+            results.append({"file": file.filename, "error": "File size must be between 1 byte and 15MB"})
+            continue
+
+        # Validate file content signature/structure to prevent masked executable uploads
+        if not validate_file_content(file, ext):
+            results.append({"file": file.filename, "error": "Invalid file content or signature mismatch"})
             continue
 
         orig_name = file.filename
@@ -283,8 +382,8 @@ def upload(current_user):
             from database import log_activity
             log_activity(user_id, "uploaded_document", "document", None, orig_name)
         except Exception as e:
-            import traceback; traceback.print_exc()
-            results.append({"file": orig_name, "error": str(e)})
+            app.logger.exception("Error processing document %s", orig_name)
+            results.append({"file": orig_name, "error": "Internal processing error. Please try again."})
         finally:
             if is_temp and os.path.exists(local_path):
                 os.remove(local_path)
@@ -375,6 +474,7 @@ def get_messages(current_user, chat_id):
 
 @app.route("/api/chats/<int:chat_id>/ask", methods=["POST"])
 @require_auth
+@validate_json(ASK_SCHEMA)
 def ask(current_user, chat_id):
     data     = request.get_json() or {}
     question = data.get("question", "").strip()
@@ -422,8 +522,8 @@ def ask(current_user, chat_id):
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
         except Exception as e:
-            import traceback; traceback.print_exc()
-            yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
+            app.logger.exception("Error in stream_ask")
+            yield f"data: {json.dumps({'type': 'error', 'text': 'An error occurred while generating the answer.'})}\n\n"
         finally:
             if full_answer:
                 add_message(chat_id, "assistant", full_answer, None, None, None)
@@ -439,6 +539,7 @@ def ask(current_user, chat_id):
 
 @app.route("/api/auth/update", methods=["POST"])
 @require_auth
+@validate_json(UPDATE_PROFILE_SCHEMA)
 def update_profile(current_user):
     data = request.get_json() or {}
     name = data.get("name", "").strip()
@@ -512,6 +613,7 @@ def suggest(current_user):
 
 @app.route("/api/ingest/url", methods=["POST"])
 @require_auth
+@validate_json(INGEST_URL_SCHEMA)
 def ingest_url(current_user):
     data = request.get_json() or {}
     url = data.get("url", "").strip()
@@ -523,11 +625,13 @@ def ingest_url(current_user):
         add_document(current_user["id"], url[:100], url[:100], 0, "url", 1, total)
         return jsonify({"message": f"Indexed {added} chunks from URL", "chunks": added})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.exception("Error in ingest_url for %s", url)
+        return jsonify({"error": "Failed to index URL. Please try again."}), 500
 
 
 @app.route("/api/ingest/youtube", methods=["POST"])
 @require_auth
+@validate_json(INGEST_URL_SCHEMA)
 def ingest_youtube(current_user):
     data = request.get_json() or {}
     url = data.get("url", "").strip()
@@ -539,13 +643,15 @@ def ingest_youtube(current_user):
         add_document(current_user["id"], url[:100], source_name, 0, "youtube", 1, added)
         return jsonify({"message": f"Indexed {added} chunks from YouTube", "chunks": added, "title": source_name})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.exception("Error in ingest_youtube for %s", url)
+        return jsonify({"error": "Failed to index YouTube transcript. Please try again."}), 500
 
 
 # ── Message Feedback ───────────────────────────────────────────────
 
 @app.route("/api/messages/<int:msg_id>/feedback", methods=["POST"])
 @require_auth
+@validate_json(FEEDBACK_SCHEMA)
 def message_feedback(current_user, msg_id):
     data = request.get_json() or {}
     rating = data.get("rating")
@@ -560,6 +666,7 @@ def message_feedback(current_user, msg_id):
 
 @app.route("/api/messages/<int:msg_id>/pin", methods=["POST"])
 @require_auth
+@validate_json(PIN_MSG_SCHEMA)
 def pin_msg(current_user, msg_id):
     data = request.get_json() or {}
     chat_id = data.get("chat_id")
@@ -602,6 +709,7 @@ def get_doc_tags_route(current_user, doc_id):
 
 @app.route("/api/search", methods=["GET"])
 @require_auth
+@validate_args(SEARCH_SCHEMA)
 def search_chats(current_user):
     q = request.args.get("q", "").strip()
     if not q:
@@ -853,6 +961,7 @@ def list_folders(current_user):
 
 @app.route("/api/folders", methods=["POST"])
 @require_auth
+@validate_json(FOLDER_SCHEMA)
 def create_folder_route(current_user):
     from database import create_folder
     data = request.get_json() or {}
@@ -899,6 +1008,7 @@ def doc_versions(current_user, doc_id):
 
 @app.route("/api/documents/compare", methods=["POST"])
 @require_auth
+@validate_json(COMPARE_SCHEMA)
 def compare_docs(current_user):
     data  = request.get_json() or {}
     doc_a = data.get("doc_a", "").strip()
@@ -914,6 +1024,7 @@ def compare_docs(current_user):
 
 @app.route("/api/documents/search", methods=["GET"])
 @require_auth
+@validate_args(SEARCH_SCHEMA)
 def search_docs(current_user):
     q = request.args.get("q", "").strip()
     if not q:
@@ -950,6 +1061,7 @@ def list_prompts(current_user):
 
 @app.route("/api/prompts", methods=["POST"])
 @require_auth
+@validate_json(PROMPT_SCHEMA)
 def save_prompt(current_user):
     from database import create_saved_prompt
     data = request.get_json() or {}
@@ -1001,6 +1113,7 @@ def view_shared_chat(token):
                            title=share["title"],
                            messages=msgs,
                            token=token)
+
 
 
 # ── Chat Branching ─────────────────────────────────────────────────
@@ -1059,7 +1172,8 @@ def regenerate(current_user, chat_id):
                 yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
+            app.logger.exception("Error in regenerate")
+            yield f"data: {json.dumps({'type': 'error', 'text': 'An error occurred while regenerating the answer.'})}\n\n"
         finally:
             if full_answer:
                 add_message(chat_id, "assistant", full_answer, None, None, None)
@@ -1114,6 +1228,7 @@ def resend_verification(current_user):
 # ── Password reset ─────────────────────────────────────────────────
 
 @app.route("/api/auth/forgot-password", methods=["POST"])
+@validate_json(FORGOT_PASSWORD_SCHEMA)
 def forgot_password():
     data = request.get_json() or {}
     email = data.get("email", "").strip().lower()
@@ -1135,11 +1250,13 @@ def forgot_password():
     return jsonify({"message": "If that email exists, a reset link has been sent"})
 
 @app.route("/reset-password")
+@validate_args(RESET_PAGE_SCHEMA)
 def reset_password_page():
     token = request.args.get("token", "")
     return render_template("reset_password.html", token=token)
 
 @app.route("/api/auth/reset-password", methods=["POST"])
+@validate_json(RESET_PASSWORD_SCHEMA)
 def do_reset_password():
     data = request.get_json() or {}
     token = data.get("token", "")
@@ -1152,6 +1269,7 @@ def do_reset_password():
         return jsonify({"error": "Invalid or expired reset link"}), 400
     clear_reset_token(user["id"], hash_password(new_pwd))
     return jsonify({"message": "Password reset successfully"})
+
 
 
 # ── 2FA / TOTP ─────────────────────────────────────────────────────
@@ -1241,6 +1359,7 @@ def list_workspaces(current_user):
 
 @app.route("/api/workspaces", methods=["POST"])
 @require_auth
+@validate_json(WORKSPACE_POST_SCHEMA)
 def create_workspace_route(current_user):
     from database import create_workspace, log_activity
     data = request.get_json() or {}
@@ -1262,6 +1381,7 @@ def delete_workspace_route(current_user, ws_id):
 
 @app.route("/api/workspaces/<int:ws_id>", methods=["PATCH"])
 @require_auth
+@validate_json(WORKSPACE_PATCH_SCHEMA)
 def edit_workspace_route(current_user, ws_id):
     from database import update_workspace
     data = request.get_json() or {}
@@ -1284,6 +1404,7 @@ def get_ws_members(current_user, ws_id):
 
 @app.route("/api/workspaces/<int:ws_id>/members", methods=["POST"])
 @require_auth
+@validate_json(WORKSPACE_MEMBER_SCHEMA)
 def invite_ws_member(current_user, ws_id):
     from database import invite_workspace_member, get_workspace, get_workspace_role, log_activity
     from mailer import send_workspace_invite_email
@@ -1344,6 +1465,7 @@ def workspace_invite_info():
 
 @app.route("/api/workspace-invite/accept", methods=["POST"])
 def accept_workspace_invite():
+
     from database import get_workspace_invite_by_token, accept_workspace_invite as db_accept
     from auth import verify_token
     data  = request.get_json() or {}
@@ -1378,6 +1500,7 @@ def remove_ws_member(current_user, ws_id, member_id):
 
 @app.route("/api/workspaces/<int:ws_id>/members/<int:member_id>", methods=["PATCH"])
 @require_auth
+@validate_json(WORKSPACE_MEMBER_ROLE_SCHEMA)
 def update_ws_member_role(current_user, ws_id, member_id):
     from database import update_member_role
     data = request.get_json() or {}
@@ -1830,7 +1953,8 @@ def ingest_notion(current_user):
                        {"source": "notion", "url": url, "chunks": added})
         return jsonify({"message": f"Indexed {added} chunks from Notion page", "chunks": added})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.exception("Error in ingest_notion for %s", url)
+        return jsonify({"error": "Failed to index Notion page. Please try again."}), 500
 
 
 if __name__ == "__main__":

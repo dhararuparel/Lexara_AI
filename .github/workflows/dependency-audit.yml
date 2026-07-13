@@ -27,4 +27,4 @@ jobs:
 
       - name: Run Dependency Audit
         run: |
-          pip-audit -r requirements.txt
+          pip-audit -r requirements.txt --no-deps

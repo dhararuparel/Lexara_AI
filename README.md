@@ -113,24 +113,24 @@ Built for real-world deployment, Lexara includes enterprise features like **team
 │                                 │ HTTPS / SSE Streams                   │
 │   Flask Application (app.py)    ▼                                       │
 │   ┌─────────────────────────────────────────────────────┐               │
-│   │  Auth │ Documents │ Chats │ Workspaces │ Admin API   │               │
+│   │  Auth │ Documents │ Chats │ Workspaces │ Admin API  │               │
 │   │  OAuth (Google / GitHub) │ TOTP 2FA │ SMTP Mail     │               │
-│   └──────────┬────────────────────────┬────────────────┘               │
-│              │                        │                                 │
-│   ┌──────────▼──────────┐  ┌──────────▼──────────────────┐            │
-│   │   RAG Pipeline      │  │   PostgreSQL (Supabase)      │            │
-│   │  ┌───────────────┐  │  │  Users │ Chats │ Documents   │            │
-│   │  │ FAISS HNSW    │  │  │  Sessions │ Workspaces       │            │
-│   │  │ Vector Store  │  │  │  Prompts │ Analytics         │            │
-│   │  │ (per-user)    │  │  └──────────────────────────────┘            │
-│   │  └───────┬───────┘  │                                              │
-│   │          │           │  ┌─────────────────────────────┐            │
-│   │  ┌───────▼───────┐  │  │  Storage                     │            │
-│   │  │ Google Gemini │  │  │  Local Disk / Cloudinary CDN  │            │
-│   │  │ Embeddings &  │  │  └─────────────────────────────┘            │
-│   │  │ Generation    │  │                                              │
-│   │  └───────────────┘  │                                              │
-│   └─────────────────────┘                                              │
+│   └──────────┬─────────────────────────┬────────────────┘               │
+│             │                         │                                 │
+│   ┌──────────▼──────────┐  ┌───────────▼──────────────────┐             │
+│   │   RAG Pipeline      │  │   PostgreSQL (Supabase)      │             │
+│   │  ┌───────────────┐  │  │  Users │ Chats │ Documents   │             │
+│   │  │ FAISS HNSW    │  │  │  Sessions │ Workspaces       │             │
+│   │  │ Vector Store  │  │  │  Prompts │ Analytics         │             │
+│   │  │ (per-user)    │  │  └──────────────────────────────┘             │
+│   │  └───────┬───────┘  │                                               │
+│   │          │          │  ┌──────────────────────────────┐             │
+│   │  ┌───────▼───────┐  │  │  Storage                     │             │
+│   │  │ Google Gemini │  │  │  Local Disk / Cloudinary CDN │             │
+│   │  │ Embeddings &  │  │  └──────────────────────────────┘             │
+│   │  │ Generation    │  │                                               │
+│   │  └───────────────┘  │                                               │
+│   └─────────────────────┘                                               │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```

@@ -52,92 +52,100 @@ def init_rate_limiter(app):
     
     @app.before_request
     def check_rate_limits():
-        ip = get_ip()
-        
-        # 0. Global IP Block for Brute-Force Behavior
-        if is_ip_blocked(ip):
-            return jsonify({
-                "error": "Forbidden",
-                "message": "Access denied. Suspected brute-force activity detected from this IP address."
-            }), 403
-
-        if not app.config.get("RATE_LIMIT_ENABLED", True):
-            return None
-            
         path = request.path
         
-        # 1. Handle Sensitive Auth Routes (signup, login, password reset)
-        # Check lockout first (before running the route)
-        if path in SENSITIVE_AUTH_PATHS:
-            email = None
-            try:
-                if request.is_json:
-                    data = request.get_json(silent=True) or {}
-                    email = data.get("email", "").strip().lower() or None
-            except Exception:
-                pass
+        # Bypass rate limiting for static assets and favicon
+        if path.startswith("/static/") or path == "/favicon.ico":
+            return None
+
+        try:
+            ip = get_ip()
+            
+            # 0. Global IP Block for Brute-Force Behavior
+            if is_ip_blocked(ip):
+                return jsonify({
+                    "error": "Forbidden",
+                    "message": "Access denied. Suspected brute-force activity detected from this IP address."
+                }), 403
+
+            if not app.config.get("RATE_LIMIT_ENABLED", True):
+                return None
                 
-            keys = [f"ip:{ip}"]
-            if email:
-                keys.append(f"email:{email}")
-                
-            lockout_until = get_auth_lockout_until(keys)
-            if lockout_until:
-                now_ts = time.time()
-                remaining = int(lockout_until.timestamp() - now_ts)
-                if remaining > 0:
-                    return jsonify({
-                        "error": f"Too many failed login attempts. Please try again in {remaining} seconds.",
-                        "retry_after": remaining
-                    }), 429
-            return None  # Allow request to proceed to route
-            
-        # 2. Handle general endpoints (Public vs Authenticated)
-        # Find matched view function
-        view_func = None
-        if request.endpoint:
-            view_func = app.view_functions.get(request.endpoint)
-            
-        # Check if the view function is authenticated
-        is_authenticated_route = False
-        if view_func and getattr(view_func, "requires_auth", False):
-            is_authenticated_route = True
-            
-        if is_authenticated_route:
-            # Authenticated User Action limit
-            # Look for session/token to extract user ID.
-            user_id = None
-            token = (
-                request.cookies.get("token") or
-                (request.headers.get("Authorization", "").replace("Bearer ", "") or None)
-            )
-            if token:
-                from auth import verify_token
-                payload = verify_token(token)
-                if payload:
-                    user_id = payload.get("uid")
+            # 1. Handle Sensitive Auth Routes (signup, login, password reset)
+            # Check lockout first (before running the route)
+            if path in SENSITIVE_AUTH_PATHS:
+                email = None
+                try:
+                    if request.is_json:
+                        data = request.get_json(silent=True) or {}
+                        email = data.get("email", "").strip().lower() or None
+                except Exception:
+                    pass
                     
-            if user_id:
-                key = f"user:{user_id}"
-                limit = int(app.config.get("USER_LIMIT_MAX", 120))
-                window = int(app.config.get("USER_LIMIT_WINDOW_SECS", 60))
+                keys = [f"ip:{ip}"]
+                if email:
+                    keys.append(f"email:{email}")
+                    
+                lockout_until = get_auth_lockout_until(keys)
+                if lockout_until:
+                    now_ts = time.time()
+                    remaining = int(lockout_until.timestamp() - now_ts)
+                    if remaining > 0:
+                        return jsonify({
+                            "error": f"Too many failed login attempts. Please try again in {remaining} seconds.",
+                            "retry_after": remaining
+                        }), 429
+                return None  # Allow request to proceed to route
+                
+            # 2. Handle general endpoints (Public vs Authenticated)
+            # Find matched view function
+            view_func = None
+            if request.endpoint:
+                view_func = app.view_functions.get(request.endpoint)
+                
+            # Check if the view function is authenticated
+            is_authenticated_route = False
+            if view_func and getattr(view_func, "requires_auth", False):
+                is_authenticated_route = True
+                
+            if is_authenticated_route:
+                # Authenticated User Action limit
+                # Look for session/token to extract user ID.
+                user_id = None
+                token = (
+                    request.cookies.get("token") or
+                    (request.headers.get("Authorization", "").replace("Bearer ", "") or None)
+                )
+                if token:
+                    from auth import verify_token
+                    payload = verify_token(token)
+                    if payload:
+                        user_id = payload.get("uid")
+                        
+                if user_id:
+                    key = f"user:{user_id}"
+                    limit = int(app.config.get("USER_LIMIT_MAX", 120))
+                    window = int(app.config.get("USER_LIMIT_WINDOW_SECS", 60))
+                else:
+                    # Fallback to IP if token is invalid/missing (will be rejected by auth anyway, but limit it)
+                    key = f"ip:{ip}"
+                    limit = int(app.config.get("PUBLIC_LIMIT_MAX", 30))
+                    window = int(app.config.get("PUBLIC_LIMIT_WINDOW_SECS", 60))
             else:
-                # Fallback to IP if token is invalid/missing (will be rejected by auth anyway, but limit it)
+                # Public Endpoint limit
                 key = f"ip:{ip}"
                 limit = int(app.config.get("PUBLIC_LIMIT_MAX", 30))
                 window = int(app.config.get("PUBLIC_LIMIT_WINDOW_SECS", 60))
-        else:
-            # Public Endpoint limit
-            key = f"ip:{ip}"
-            limit = int(app.config.get("PUBLIC_LIMIT_MAX", 30))
-            window = int(app.config.get("PUBLIC_LIMIT_WINDOW_SECS", 60))
-            
-        # Enforce rate limit
-        if check_sliding_window_rate_limit(key, limit, window):
-            return jsonify({
-                "error": "Too many requests. Please try again later.",
-                "retry_after": window
-            }), 429
+                
+            # Enforce rate limit
+            if check_sliding_window_rate_limit(key, limit, window):
+                return jsonify({
+                    "error": "Too many requests. Please try again later.",
+                    "retry_after": window
+                }), 429
+                
+        except Exception as e:
+            app.logger.error(f"Rate limiting check bypassed due to internal error: {e}")
             
         return None
 
@@ -162,13 +170,16 @@ def init_rate_limiter(app):
                 keys.append(f"email:{email}")
                 
             # Check success / failure based on status code
-            if response.status_code in (200, 201, 204, 302):
-                clear_auth_failures(keys)
-            else:
-                base = int(app.config.get("AUTH_BACKOFF_BASE_SECS", 5))
-                factor = int(app.config.get("AUTH_BACKOFF_FACTOR", 2))
-                max_secs = int(app.config.get("AUTH_BACKOFF_MAX_SECS", 3600))
-                record_auth_failure(keys, base, factor, max_secs)
+            try:
+                if response.status_code in (200, 201, 204, 302):
+                    clear_auth_failures(keys)
+                else:
+                    base = int(app.config.get("AUTH_BACKOFF_BASE_SECS", 5))
+                    factor = int(app.config.get("AUTH_BACKOFF_FACTOR", 2))
+                    max_secs = int(app.config.get("AUTH_BACKOFF_MAX_SECS", 3600))
+                    record_auth_failure(keys, base, factor, max_secs)
+            except Exception as e:
+                app.logger.error(f"Failed to record auth status: {e}")
                 
         return response
 

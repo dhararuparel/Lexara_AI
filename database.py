@@ -57,7 +57,7 @@ def _get_pool():
     if _pool is None:
         _pool = pool.ThreadedConnectionPool(
             minconn=1,
-            maxconn=3,
+            maxconn=20,
             dsn=DATABASE_URL,
             connect_timeout=10,
         )
@@ -1941,12 +1941,12 @@ def record_auth_failure(keys, base_secs, factor, max_secs):
                 
                 cur.execute("""
                     INSERT INTO auth_failures (key, attempts, last_failed_at, lockout_until)
-                    VALUES (%s, %s, NOW(), NOW() + INTERVAL '%s seconds')
+                    VALUES (%s, %s, NOW(), NOW() + (%s * INTERVAL '1 second'))
                     ON CONFLICT (key) DO UPDATE SET
                         attempts = EXCLUDED.attempts,
                         last_failed_at = EXCLUDED.last_failed_at,
                         lockout_until = EXCLUDED.lockout_until
-                """, (key, attempts, f"{delay}"))
+                """, (key, attempts, int(delay)))
         conn.commit()
 
 def clear_auth_failures(keys):
@@ -1969,8 +1969,8 @@ def check_sliding_window_rate_limit(key, limit, window_secs):
         with conn.cursor() as cur:
             # Delete expired entries
             cur.execute(
-                "DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '%s seconds'",
-                (f"{window_secs}",)
+                "DELETE FROM rate_limits WHERE window_start < NOW() - (%s * INTERVAL '1 second')",
+                (int(window_secs),)
             )
             
             cur.execute("SELECT requests, window_start FROM rate_limits WHERE key = %s", (key,))

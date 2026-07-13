@@ -165,14 +165,21 @@ Built for real-world deployment, Lexara includes enterprise features like **team
 ```
 Lexara-AI/
 │
+├── 📁 .github/                  # GitHub Actions and automation configs
+│   ├── ⚙️ dependabot.yml         # Dependabot weekly dependency updates config
+│   └── 📁 workflows/
+│       └── ⚙️ dependency-audit.yml # GHA weekly vulnerability auditing workflow
+│
 ├── 📄 app.py                    # Core Flask application — all routes, API endpoints,
 │                                # OAuth flows, streaming SSE, and middleware
 │
 ├── 🔐 auth.py                   # JWT token generation, password hashing (Werkzeug),
-│                                # and @require_auth decorator
+│                                # token revocation blocklist, and auth decorator
 │
 ├── 🗄️  database.py              # Full PostgreSQL data layer — connection pooling,
-│                                # table schemas, and all CRUD operations
+│                                # table schemas, AES-256 DB encryption at rest
+│
+├── 🛡️  rate_limiter.py           # Global rate limiting and brute-force IP blocking
 │
 ├── 🧠 rag_pipeline.py           # Core RAG engine — FAISS HNSW indexing, Gemini
 │                                # embedding retrieval, streaming generation,
@@ -183,6 +190,8 @@ Lexara-AI/
 │
 ├── 🔢 embeddings.py             # Google GenAI embedding wrapper with
 │                                # batch processing and normalization
+│
+├── 🔍 validators.py             # JSON request body validation decorators and schemas
 │
 ├── 📧 mailer.py                 # SMTP email service — verification emails,
 │                                # password resets, workspace invitations

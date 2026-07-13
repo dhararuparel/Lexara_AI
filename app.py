@@ -10,8 +10,32 @@ os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")   # suppress C++ TF logs
 os.environ.setdefault("ABSL_MIN_LOG_LEVEL", "3")      # suppress absl logs
 import logging
+import re
 logging.getLogger("tensorflow").setLevel(logging.ERROR)
 logging.getLogger("absl").setLevel(logging.ERROR)
+
+class SensitiveDataFilter(logging.Filter):
+    SENSITIVE_PATTERNS = [
+        (re.compile(r'(password|totp|secret|token|api_key|key|auth|email)["\']?\s*[:=]\s*["\']?([a-zA-Z0-9_\-\.\+\@\%\:\/]+)["\']?', re.IGNORECASE), r'\1: [MASKED]'),
+        (re.compile(r'[\w\.\-\+]+@[\w\.\-]+\.[a-zA-Z]{2,}'), '[EMAIL_MASKED]')
+    ]
+
+    def filter(self, record):
+        if not isinstance(record.msg, str):
+            return True
+        msg = record.msg
+        for pattern, replacement in self.SENSITIVE_PATTERNS:
+            msg = pattern.sub(replacement, msg)
+        record.msg = msg
+        if record.args:
+            new_args = []
+            for arg in record.args:
+                if isinstance(arg, str):
+                    for pattern, replacement in self.SENSITIVE_PATTERNS:
+                        arg = pattern.sub(replacement, arg)
+                new_args.append(arg)
+            record.args = tuple(new_args)
+        return True
 # Suppress the tf_keras deprecation warning
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -49,6 +73,12 @@ init_db()
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+# Attach log sanitization filter
+app.logger.addFilter(SensitiveDataFilter())
+for handler in app.logger.handlers:
+    handler.addFilter(SensitiveDataFilter())
+logging.getLogger("werkzeug").addFilter(SensitiveDataFilter())
 
 from flask_cors import CORS
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "")
@@ -374,6 +404,12 @@ def login():
 
 @app.route("/api/auth/logout", methods=["POST"])
 def logout():
+    token = request.cookies.get("token") or request.headers.get("Authorization", "").replace("Bearer ", "")
+    if token:
+        from auth import verify_token, blacklist_token
+        payload = verify_token(token)
+        if payload:
+            blacklist_token(token, payload["exp"])
     res = make_response(jsonify({"message": "Logged out"}))
     res.delete_cookie("token")
     return res
@@ -1146,7 +1182,8 @@ def preview_doc(current_user, doc_id):
     if not os.path.exists(fp):
         return jsonify({"error": "File not found on disk"}), 404
     mime = "application/pdf" if doc["file_type"] == "pdf" else "application/octet-stream"
-    return send_file(fp, mimetype=mime, as_attachment=False)
+    # Ensure Content-Disposition: attachment is set to prevent stored XSS (mime execution in browser)
+    return send_file(fp, mimetype=mime, as_attachment=True, download_name=doc["orig_name"])
 
 
 # ── Saved Prompts ──────────────────────────────────────────────────

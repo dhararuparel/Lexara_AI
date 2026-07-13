@@ -61,7 +61,14 @@ origins_list = [o.strip() for o in allowed_origins.split(",") if o.strip()] if a
 CORS(app, origins=origins_list, supports_credentials=True)
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "Lexara-secret")
+secret_key = os.getenv("SECRET_KEY")
+if not secret_key:
+    if os.getenv("FLASK_ENV") == "production":
+        raise ValueError("FATAL: SECRET_KEY environment variable is not set in production!")
+    else:
+        app.logger.warning("WARNING: SECRET_KEY environment variable is not set. Using insecure default key for development.")
+        secret_key = "Lexara-insecure-dev-secret-key"
+app.config["SECRET_KEY"] = secret_key
 app.config["SESSION_COOKIE_SECURE"] = True
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Strict"

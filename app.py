@@ -83,6 +83,21 @@ init_mail(app)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 rag = RAGPipeline(gemini_api_key=GEMINI_API_KEY)
 
+@app.errorhandler(Exception)
+def handle_global_exception(e):
+    from werkzeug.exceptions import HTTPException
+    app.logger.exception("Unhandled exception occurred: %s", str(e))
+    if isinstance(e, HTTPException):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": e.description}), e.code
+        return make_response(f"<h2>{e.description}</h2>", e.code)
+    if request.path.startswith("/api/"):
+        return jsonify({
+            "error": "Internal Server Error",
+            "message": "An unexpected error occurred. Please try again later."
+        }), 500
+    return make_response("<h2>An unexpected error occurred. Please try again later.</h2>", 500)
+
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
 # ── OAuth setup ────────────────────────────────────────────────────
@@ -109,6 +124,49 @@ oauth.register(
 
 def allowed_file(filename):
     return os.path.splitext(filename)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def validate_file_content(file_obj, ext) -> bool:
+    """
+    Validates that the file signature (magic number) matches the expected extension.
+    For text-based formats, validates that they do not contain binary/executable headers.
+    """
+    try:
+        # Read first 2048 bytes to inspect signature
+        header = file_obj.read(2048)
+        file_obj.seek(0) # Reset stream pointer
+        
+        if not header:
+            return False
+
+        if ext == ".pdf":
+            # PDF files must start with %PDF-
+            return header.startswith(b"%PDF")
+            
+        elif ext == ".docx":
+            # DOCX is a ZIP file, starting with PK\x03\x04
+            return header.startswith(b"PK\x03\x04")
+            
+        elif ext in {".txt", ".md"}:
+            # Must be readable text, not binary or ELF/PE executables
+            # Check for ELF signature (b'\x7fELF') or PE signature (b'MZ')
+            if header.startswith(b"\x7fELF") or header.startswith(b"MZ"):
+                return False
+            # Check for high ratio of control/null bytes indicating a binary file
+            # Tolerable control chars: \t (9), \n (10), \r (13)
+            control_chars = sum(1 for b in header if b < 9 or (10 < b < 13) or (13 < b < 32))
+            if control_chars > len(header) * 0.10: # More than 10% control chars implies binary
+                return False
+            # Check if it is valid decodable UTF-8 or ASCII text (ignoring potential decode errors on edge of 2048 cut)
+            try:
+                header.decode("utf-8", errors="ignore")
+                return True
+            except Exception:
+                return False
+                
+        return False
+    except Exception:
+        return False
 
 
 # ── PWA Support Routes ──────────────────────────────────────────────
@@ -278,8 +336,22 @@ def upload(current_user):
     for file in files:
         if not file or not file.filename:
             continue
+        ext = os.path.splitext(file.filename)[1].lower()
         if not allowed_file(file.filename):
             results.append({"file": file.filename, "error": "Unsupported file type"})
+            continue
+
+        # Check individual file size (limit to 15MB)
+        file.seek(0, os.SEEK_END)
+        size = file.tell()
+        file.seek(0)
+        if size <= 0 or size > 15 * 1024 * 1024:
+            results.append({"file": file.filename, "error": "File size must be between 1 byte and 15MB"})
+            continue
+
+        # Validate file content signature/structure to prevent masked executable uploads
+        if not validate_file_content(file, ext):
+            results.append({"file": file.filename, "error": "Invalid file content or signature mismatch"})
             continue
 
         orig_name = file.filename
@@ -310,8 +382,8 @@ def upload(current_user):
             from database import log_activity
             log_activity(user_id, "uploaded_document", "document", None, orig_name)
         except Exception as e:
-            import traceback; traceback.print_exc()
-            results.append({"file": orig_name, "error": str(e)})
+            app.logger.exception("Error processing document %s", orig_name)
+            results.append({"file": orig_name, "error": "Internal processing error. Please try again."})
         finally:
             if is_temp and os.path.exists(local_path):
                 os.remove(local_path)
@@ -450,8 +522,8 @@ def ask(current_user, chat_id):
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
         except Exception as e:
-            import traceback; traceback.print_exc()
-            yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
+            app.logger.exception("Error in stream_ask")
+            yield f"data: {json.dumps({'type': 'error', 'text': 'An error occurred while generating the answer.'})}\n\n"
         finally:
             if full_answer:
                 add_message(chat_id, "assistant", full_answer, None, None, None)
@@ -553,7 +625,8 @@ def ingest_url(current_user):
         add_document(current_user["id"], url[:100], url[:100], 0, "url", 1, total)
         return jsonify({"message": f"Indexed {added} chunks from URL", "chunks": added})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.exception("Error in ingest_url for %s", url)
+        return jsonify({"error": "Failed to index URL. Please try again."}), 500
 
 
 @app.route("/api/ingest/youtube", methods=["POST"])
@@ -570,7 +643,8 @@ def ingest_youtube(current_user):
         add_document(current_user["id"], url[:100], source_name, 0, "youtube", 1, added)
         return jsonify({"message": f"Indexed {added} chunks from YouTube", "chunks": added, "title": source_name})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.exception("Error in ingest_youtube for %s", url)
+        return jsonify({"error": "Failed to index YouTube transcript. Please try again."}), 500
 
 
 # ── Message Feedback ───────────────────────────────────────────────
@@ -1098,7 +1172,8 @@ def regenerate(current_user, chat_id):
                 yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
+            app.logger.exception("Error in regenerate")
+            yield f"data: {json.dumps({'type': 'error', 'text': 'An error occurred while regenerating the answer.'})}\n\n"
         finally:
             if full_answer:
                 add_message(chat_id, "assistant", full_answer, None, None, None)
@@ -1878,7 +1953,8 @@ def ingest_notion(current_user):
                        {"source": "notion", "url": url, "chunks": added})
         return jsonify({"message": f"Indexed {added} chunks from Notion page", "chunks": added})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.exception("Error in ingest_notion for %s", url)
+        return jsonify({"error": "Failed to index Notion page. Please try again."}), 500
 
 
 if __name__ == "__main__":

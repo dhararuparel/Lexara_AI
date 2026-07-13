@@ -37,6 +37,7 @@ def save_file(file_obj, filename: str) -> str:
         os.makedirs(upload_folder, exist_ok=True)
         filepath = os.path.join(upload_folder, filename)
         file_obj.save(filepath)
+        os.chmod(filepath, 0o644)
         return filepath
 
 

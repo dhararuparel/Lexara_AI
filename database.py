@@ -8,6 +8,42 @@ import psycopg2
 import psycopg2.extras
 from psycopg2 import pool
 from dotenv import load_dotenv
+import base64
+from cryptography.fernet import Fernet
+
+def get_encryption_key() -> bytes:
+    key = os.getenv("DB_ENCRYPTION_KEY")
+    if key:
+        return key.encode()
+    secret = os.getenv("SECRET_KEY", "Lexara-default-fallback-key-for-encryption-rest")
+    import hashlib
+    h = hashlib.sha256(secret.encode()).digest()
+    return base64.urlsafe_b64encode(h)
+
+_cipher = None
+def get_cipher():
+    global _cipher
+    if _cipher is None:
+        _cipher = Fernet(get_encryption_key())
+    return _cipher
+
+def encrypt_value(val: str) -> str:
+    if not val:
+        return val
+    try:
+        cipher = get_cipher()
+        return cipher.encrypt(val.encode()).decode()
+    except Exception:
+        return val
+
+def decrypt_value(val: str) -> str:
+    if not val:
+        return val
+    try:
+        cipher = get_cipher()
+        return cipher.decrypt(val.encode()).decode()
+    except Exception:
+        return val
 
 load_dotenv()
 
@@ -56,14 +92,16 @@ def _row(cursor, one=True):
     """Fetch one or all rows as plain dicts, with datetime serialized to ISO strings."""
     import datetime
     cols = [d[0] for d in cursor.description]
-    def _serialize(v):
+    def _serialize(k, v):
         if isinstance(v, (datetime.datetime, datetime.date)):
             return v.isoformat()
+        if k in {"totp_secret", "text", "parent_text", "secret"} and isinstance(v, str):
+            return decrypt_value(v)
         return v
     if one:
         row = cursor.fetchone()
-        return {k: _serialize(v) for k, v in zip(cols, row)} if row else None
-    return [{k: _serialize(v) for k, v in zip(cols, row)} for row in cursor.fetchall()]
+        return {k: _serialize(k, v) for k, v in zip(cols, row)} if row else None
+    return [{k: _serialize(k, v) for k, v in zip(cols, row)} for row in cursor.fetchall()]
 
 
 def init_db():
@@ -700,8 +738,8 @@ def save_chunks(user_id, chunks):
                   c.get("source",""),
                   c.get("page", 1),
                   c.get("chunk_index", 0),
-                  c.get("text",""),
-                  c.get("parent_text",""))
+                  encrypt_value(c.get("text","")),
+                  encrypt_value(c.get("parent_text","")))
                  for c in chunks]
             )
         conn.commit()
@@ -1024,7 +1062,7 @@ def touch_session(token):
 def set_totp_secret(user_id, secret):
     with _conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("UPDATE users SET totp_secret=%s, totp_enabled=TRUE WHERE id=%s", (secret, user_id))
+            cur.execute("UPDATE users SET totp_secret=%s, totp_enabled=TRUE WHERE id=%s", (encrypt_value(secret), user_id))
         conn.commit()
 
 def disable_totp(user_id):
@@ -1171,7 +1209,7 @@ def clear_reset_token(user_id, new_password):
 def set_totp_secret(user_id, secret):
     with _conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("UPDATE users SET totp_secret=%s, totp_enabled=FALSE WHERE id=%s", (secret, user_id))
+            cur.execute("UPDATE users SET totp_secret=%s, totp_enabled=FALSE WHERE id=%s", (encrypt_value(secret), user_id))
         conn.commit()
 
 def enable_totp(user_id):
@@ -1832,7 +1870,7 @@ def create_webhook(user_id, url, events='document_uploaded,query_made', secret='
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO webhooks (user_id,url,events,secret) VALUES (%s,%s,%s,%s) RETURNING *",
-                (user_id, url, events, secret)
+                (user_id, url, events, encrypt_value(secret))
             )
             row = _row(cur)
         conn.commit()

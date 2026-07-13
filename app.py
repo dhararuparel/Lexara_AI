@@ -10,8 +10,32 @@ os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")   # suppress C++ TF logs
 os.environ.setdefault("ABSL_MIN_LOG_LEVEL", "3")      # suppress absl logs
 import logging
+import re
 logging.getLogger("tensorflow").setLevel(logging.ERROR)
 logging.getLogger("absl").setLevel(logging.ERROR)
+
+class SensitiveDataFilter(logging.Filter):
+    SENSITIVE_PATTERNS = [
+        (re.compile(r'(password|totp|secret|token|api_key|key|auth|email)["\']?\s*[:=]\s*["\']?([a-zA-Z0-9_\-\.\+\@\%\:\/]+)["\']?', re.IGNORECASE), r'\1: [MASKED]'),
+        (re.compile(r'[\w\.\-\+]+@[\w\.\-]+\.[a-zA-Z]{2,}'), '[EMAIL_MASKED]')
+    ]
+
+    def filter(self, record):
+        if not isinstance(record.msg, str):
+            return True
+        msg = record.msg
+        for pattern, replacement in self.SENSITIVE_PATTERNS:
+            msg = pattern.sub(replacement, msg)
+        record.msg = msg
+        if record.args:
+            new_args = []
+            for arg in record.args:
+                if isinstance(arg, str):
+                    for pattern, replacement in self.SENSITIVE_PATTERNS:
+                        arg = pattern.sub(replacement, arg)
+                new_args.append(arg)
+            record.args = tuple(new_args)
+        return True
 # Suppress the tf_keras deprecation warning
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -49,9 +73,35 @@ init_db()
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+# Attach log sanitization filter
+app.logger.addFilter(SensitiveDataFilter())
+for handler in app.logger.handlers:
+    handler.addFilter(SensitiveDataFilter())
+logging.getLogger("werkzeug").addFilter(SensitiveDataFilter())
+
+from flask_cors import CORS
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "")
+origins_list = [o.strip() for o in allowed_origins.split(",") if o.strip()] if allowed_origins else [
+    "http://localhost:3000",
+    "http://localhost:5000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5000"
+]
+CORS(app, origins=origins_list, supports_credentials=True)
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
-app.secret_key = os.getenv("SECRET_KEY", "Lexara-secret")
+secret_key = os.getenv("SECRET_KEY")
+if not secret_key:
+    if os.getenv("FLASK_ENV") == "production":
+        raise ValueError("FATAL: SECRET_KEY environment variable is not set in production!")
+    else:
+        app.logger.warning("WARNING: SECRET_KEY environment variable is not set. Using insecure default key for development.")
+        secret_key = "Lexara-insecure-dev-secret-key"
+app.config["SECRET_KEY"] = secret_key
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
 
 # Rate Limiting Configuration
 app.config["RATE_LIMIT_ENABLED"] = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
@@ -97,6 +147,77 @@ def handle_global_exception(e):
             "message": "An unexpected error occurred. Please try again later."
         }), 500
     return make_response("<h2>An unexpected error occurred. Please try again later.</h2>", 500)
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+        "img-src 'self' data: https://res.cloudinary.com https://lh3.googleusercontent.com https://avatars.githubusercontent.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "connect-src 'self' https://api.github.com https://accounts.google.com; "
+        "frame-src 'self' https://accounts.google.com;"
+    )
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    
+    if not request.cookies.get("csrf_token"):
+        import secrets
+        response.set_cookie("csrf_token", secrets.token_urlsafe(32), secure=True, httponly=False, samesite="Lax")
+    return response
+
+@app.before_request
+def csrf_protect():
+    if request.method in {"POST", "PUT", "DELETE", "PATCH"}:
+        if request.path.startswith("/v1/"):
+            return
+        if request.path in {
+            "/api/auth/login",
+            "/api/auth/signup",
+            "/api/auth/verify-email",
+            "/api/auth/forgot-password",
+            "/api/auth/reset-password"
+        } or request.path.startswith("/auth/"):
+            return
+
+        csrf_cookie = request.cookies.get("csrf_token")
+        csrf_header = request.headers.get("X-CSRF-Token")
+
+        if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+            return jsonify({
+                "error": "Bad Request",
+                "message": "CSRF token validation failed."
+            }), 400
+
+@app.before_request
+def sanitize_inputs():
+    if request.is_json:
+        data = request.get_json(silent=True)
+        if isinstance(data, dict):
+            import html
+            def sanitize_string(val: str) -> str:
+                return html.escape(val, quote=True)
+            def _sanitize_dict(d):
+                for k, v in d.items():
+                    if isinstance(v, str):
+                        if k not in {"password", "secret", "token", "totp_code", "url"}:
+                            d[k] = sanitize_string(v)
+                    elif isinstance(v, dict):
+                        _sanitize_dict(v)
+                    elif isinstance(v, list):
+                        _sanitize_list(v)
+            def _sanitize_list(l):
+                for i, v in enumerate(l):
+                    if isinstance(v, str):
+                        l[i] = sanitize_string(v)
+                    elif isinstance(v, dict):
+                        _sanitize_dict(v)
+                    elif isinstance(v, list):
+                        _sanitize_list(v)
+            _sanitize_dict(data)
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
@@ -242,7 +363,7 @@ def signup():
     token = generate_token(user["id"], user["email"])
     _track_session(user["id"], token)
     res = make_response(jsonify({"token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"]}}))
-    res.set_cookie("token", token, httponly=True, max_age=72*3600, samesite="Lax")
+    res.set_cookie("token", token, httponly=True, secure=True, max_age=72*3600, samesite="Strict")
     return res
 
 
@@ -259,7 +380,14 @@ def login():
         return jsonify({"error": "Invalid email or password"}), 401
 
     # 2FA check
-    if user.get("totp_enabled") and user.get("totp_secret"):
+    is_sensitive = user.get("is_admin")
+    if is_sensitive or (user.get("totp_enabled") and user.get("totp_secret")):
+        if not user.get("totp_enabled") or not user.get("totp_secret"):
+            return jsonify({
+                "error": "MFA configuration required",
+                "message": "Multi-Factor Authentication is mandatory for administrative accounts. Please configure MFA.",
+                "requires_mfa_setup": True
+            }), 403
         if not totp_code:
             return jsonify({"error": "2FA code required", "requires_2fa": True}), 401
         import pyotp
@@ -270,12 +398,18 @@ def login():
     token = generate_token(user["id"], user["email"])
     _track_session(user["id"], token)
     res = make_response(jsonify({"token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"]}}))
-    res.set_cookie("token", token, httponly=True, max_age=72*3600, samesite="Lax")
+    res.set_cookie("token", token, httponly=True, secure=True, max_age=72*3600, samesite="Strict")
     return res
 
 
 @app.route("/api/auth/logout", methods=["POST"])
 def logout():
+    token = request.cookies.get("token") or request.headers.get("Authorization", "").replace("Bearer ", "")
+    if token:
+        from auth import verify_token, blacklist_token
+        payload = verify_token(token)
+        if payload:
+            blacklist_token(token, payload["exp"])
     res = make_response(jsonify({"message": "Logged out"}))
     res.delete_cookie("token")
     return res
@@ -946,7 +1080,7 @@ def _oauth_login_or_create(name: str, email: str):
         user = create_user(name, email, hash_password(secrets.token_hex(32)))
     token = generate_token(user["id"], user["email"])
     res = make_response(redirect("/"))
-    res.set_cookie("token", token, httponly=True, max_age=72*3600, samesite="Lax")
+    res.set_cookie("token", token, httponly=True, secure=True, max_age=72*3600, samesite="Strict")
     return res
 
 
@@ -1048,7 +1182,8 @@ def preview_doc(current_user, doc_id):
     if not os.path.exists(fp):
         return jsonify({"error": "File not found on disk"}), 404
     mime = "application/pdf" if doc["file_type"] == "pdf" else "application/octet-stream"
-    return send_file(fp, mimetype=mime, as_attachment=False)
+    # Ensure Content-Disposition: attachment is set to prevent stored XSS (mime execution in browser)
+    return send_file(fp, mimetype=mime, as_attachment=True, download_name=doc["orig_name"])
 
 
 # ── Saved Prompts ──────────────────────────────────────────────────
@@ -1676,6 +1811,8 @@ def require_admin(f):
         current_user = kwargs.get("current_user")
         if not current_user or not current_user.get("is_admin"):
             return jsonify({"error": "Admin access required"}), 403
+        if not current_user.get("totp_enabled"):
+            return jsonify({"error": "MFA is mandatory for admin accounts. Please enable MFA."}), 403
         return f(*args, **kwargs)
     return decorated
 

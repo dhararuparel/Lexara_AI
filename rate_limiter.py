@@ -20,6 +20,31 @@ def get_ip():
     """Retrieves the client's actual IP address, respecting reverse proxy headers."""
     return request.remote_addr or "127.0.0.1"
 
+
+def is_ip_blocked(ip) -> bool:
+    """
+    Checks if an IP is blocked due to excessive brute-force attempts.
+    """
+    from database import _conn
+    try:
+        with _conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT attempts, lockout_until FROM auth_failures WHERE key = %s",
+                    (f"ip:{ip}",)
+                )
+                row = cur.fetchone()
+                if row:
+                    attempts, lockout_until = row
+                    # Block IP if attempts >= 15 and lockout is still active
+                    if attempts >= 15 and lockout_until:
+                        if lockout_until.timestamp() > time.time():
+                            return True
+    except Exception:
+        pass
+    return False
+
+
 def init_rate_limiter(app):
     """
     Registers before_request and after_request hooks to handle rate limiting globally.
@@ -27,11 +52,19 @@ def init_rate_limiter(app):
     
     @app.before_request
     def check_rate_limits():
+        ip = get_ip()
+        
+        # 0. Global IP Block for Brute-Force Behavior
+        if is_ip_blocked(ip):
+            return jsonify({
+                "error": "Forbidden",
+                "message": "Access denied. Suspected brute-force activity detected from this IP address."
+            }), 403
+
         if not app.config.get("RATE_LIMIT_ENABLED", True):
             return None
             
         path = request.path
-        ip = get_ip()
         
         # 1. Handle Sensitive Auth Routes (signup, login, password reset)
         # Check lockout first (before running the route)

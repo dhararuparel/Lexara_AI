@@ -145,6 +145,33 @@ def csrf_protect():
                 "message": "CSRF token validation failed."
             }), 400
 
+@app.before_request
+def sanitize_inputs():
+    if request.is_json:
+        data = request.get_json(silent=True)
+        if isinstance(data, dict):
+            import html
+            def sanitize_string(val: str) -> str:
+                return html.escape(val, quote=True)
+            def _sanitize_dict(d):
+                for k, v in d.items():
+                    if isinstance(v, str):
+                        if k not in {"password", "secret", "token", "totp_code", "url"}:
+                            d[k] = sanitize_string(v)
+                    elif isinstance(v, dict):
+                        _sanitize_dict(v)
+                    elif isinstance(v, list):
+                        _sanitize_list(v)
+            def _sanitize_list(l):
+                for i, v in enumerate(l):
+                    if isinstance(v, str):
+                        l[i] = sanitize_string(v)
+                    elif isinstance(v, dict):
+                        _sanitize_dict(v)
+                    elif isinstance(v, list):
+                        _sanitize_list(v)
+            _sanitize_dict(data)
+
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
 # ── OAuth setup ────────────────────────────────────────────────────
@@ -306,7 +333,14 @@ def login():
         return jsonify({"error": "Invalid email or password"}), 401
 
     # 2FA check
-    if user.get("totp_enabled") and user.get("totp_secret"):
+    is_sensitive = user.get("is_admin")
+    if is_sensitive or (user.get("totp_enabled") and user.get("totp_secret")):
+        if not user.get("totp_enabled") or not user.get("totp_secret"):
+            return jsonify({
+                "error": "MFA configuration required",
+                "message": "Multi-Factor Authentication is mandatory for administrative accounts. Please configure MFA.",
+                "requires_mfa_setup": True
+            }), 403
         if not totp_code:
             return jsonify({"error": "2FA code required", "requires_2fa": True}), 401
         import pyotp
@@ -1723,6 +1757,8 @@ def require_admin(f):
         current_user = kwargs.get("current_user")
         if not current_user or not current_user.get("is_admin"):
             return jsonify({"error": "Admin access required"}), 403
+        if not current_user.get("totp_enabled"):
+            return jsonify({"error": "MFA is mandatory for admin accounts. Please enable MFA."}), 403
         return f(*args, **kwargs)
     return decorated
 

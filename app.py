@@ -51,7 +51,10 @@ app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
-app.secret_key = os.getenv("SECRET_KEY", "Lexara-secret")
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "Lexara-secret")
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
 
 # Rate Limiting Configuration
 app.config["RATE_LIMIT_ENABLED"] = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
@@ -113,7 +116,34 @@ def add_security_headers(response):
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    
+    if not request.cookies.get("csrf_token"):
+        import secrets
+        response.set_cookie("csrf_token", secrets.token_urlsafe(32), secure=True, httponly=False, samesite="Lax")
     return response
+
+@app.before_request
+def csrf_protect():
+    if request.method in {"POST", "PUT", "DELETE", "PATCH"}:
+        if request.path.startswith("/v1/"):
+            return
+        if request.path in {
+            "/api/auth/login",
+            "/api/auth/signup",
+            "/api/auth/verify-email",
+            "/api/auth/forgot-password",
+            "/api/auth/reset-password"
+        } or request.path.startswith("/auth/"):
+            return
+
+        csrf_cookie = request.cookies.get("csrf_token")
+        csrf_header = request.headers.get("X-CSRF-Token")
+
+        if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+            return jsonify({
+                "error": "Bad Request",
+                "message": "CSRF token validation failed."
+            }), 400
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
@@ -259,7 +289,7 @@ def signup():
     token = generate_token(user["id"], user["email"])
     _track_session(user["id"], token)
     res = make_response(jsonify({"token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"]}}))
-    res.set_cookie("token", token, httponly=True, max_age=72*3600, samesite="Lax")
+    res.set_cookie("token", token, httponly=True, secure=True, max_age=72*3600, samesite="Strict")
     return res
 
 
@@ -287,7 +317,7 @@ def login():
     token = generate_token(user["id"], user["email"])
     _track_session(user["id"], token)
     res = make_response(jsonify({"token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"]}}))
-    res.set_cookie("token", token, httponly=True, max_age=72*3600, samesite="Lax")
+    res.set_cookie("token", token, httponly=True, secure=True, max_age=72*3600, samesite="Strict")
     return res
 
 
@@ -963,7 +993,7 @@ def _oauth_login_or_create(name: str, email: str):
         user = create_user(name, email, hash_password(secrets.token_hex(32)))
     token = generate_token(user["id"], user["email"])
     res = make_response(redirect("/"))
-    res.set_cookie("token", token, httponly=True, max_age=72*3600, samesite="Lax")
+    res.set_cookie("token", token, httponly=True, secure=True, max_age=72*3600, samesite="Strict")
     return res
 
 

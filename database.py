@@ -337,12 +337,12 @@ def init_db():
 
 # ── Users ──────────────────────────────────────────────────────────
 
-def create_user(name, email, hashed_password):
+def create_user(name, email, hashed_password, email_verified=False):
     with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO users (name, email, password) VALUES (%s,%s,%s) RETURNING *",
-                (name, email, hashed_password)
+                "INSERT INTO users (name, email, password, email_verified) VALUES (%s,%s,%s,%s) RETURNING *",
+                (name, email.strip().lower(), hashed_password, email_verified)
             )
             row = _row(cur)
         conn.commit()
@@ -350,10 +350,19 @@ def create_user(name, email, hashed_password):
 
 
 def get_user_by_email(email):
+    if not email:
+        return None
     with _conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM users WHERE email=%s", (email,))
+            cur.execute("SELECT * FROM users WHERE LOWER(email)=LOWER(%s)", (email.strip(),))
             return _row(cur)
+
+
+def mark_user_email_verified(user_id):
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET email_verified=TRUE, verify_token=NULL WHERE id=%s", (user_id,))
+        conn.commit()
 
 
 def get_user_by_id(user_id):

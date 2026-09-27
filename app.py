@@ -1017,15 +1017,11 @@ def google_callback():
 
     token = None
     try:
-        # Pass redirect_uri explicitly for strict matching
-        token = oauth.google.authorize_access_token(redirect_uri=redirect_uri)
+        token = oauth.google.authorize_access_token()
     except Exception as e:
-        app.logger.warning(f"Google authorize_access_token with redirect_uri failed: {e}. Trying without redirect_uri...")
-        try:
-            token = oauth.google.authorize_access_token()
-        except Exception as e2:
-            app.logger.error(f"Google OAuth token exchange failed completely: {e2}")
-            return redirect("/login?error=oauth_failed&msg=Google+authentication+failed.+Please+try+again.")
+        app.logger.exception(f"Google OAuth token exchange failed: {e}")
+        from urllib.parse import quote_plus
+        return redirect(f"/login?error=oauth_failed&msg=Google+sign-in+failed:+{quote_plus(str(e))}")
 
     userinfo = token.get("userinfo") if token else None
     if not userinfo:

@@ -47,7 +47,7 @@ from dotenv import load_dotenv
 from authlib.integrations.flask_client import OAuth
 
 from database import (
-    init_db, create_user, get_user_by_email,
+    init_db, create_user, get_user_by_email, mark_user_email_verified,
     add_document, get_user_documents, delete_document, get_document_stats,
     create_chat, get_user_chats, delete_chat, update_chat_title,
     add_message, get_chat_messages, get_analytics
@@ -72,7 +72,7 @@ load_dotenv()
 init_db()
 
 app = Flask(__name__)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
 
 # Attach log sanitization filter
 app.logger.addFilter(SensitiveDataFilter())
@@ -98,10 +98,11 @@ if not secret_key:
     else:
         app.logger.warning("WARNING: SECRET_KEY environment variable is not set. Using insecure default key for development.")
         secret_key = "Lexara-insecure-dev-secret-key"
+is_prod = os.getenv("FLASK_ENV") == "production" or os.getenv("RENDER") is not None
 app.config["SECRET_KEY"] = secret_key
-app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_SECURE"] = is_prod
 app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 # Rate Limiting Configuration
 app.config["RATE_LIMIT_ENABLED"] = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
@@ -166,7 +167,7 @@ def add_security_headers(response):
     
     if not request.cookies.get("csrf_token"):
         import secrets
-        response.set_cookie("csrf_token", secrets.token_urlsafe(32), secure=True, httponly=False, samesite="Lax")
+        response.set_cookie("csrf_token", secrets.token_urlsafe(32), secure=is_prod, httponly=False, samesite="Lax")
     return response
 
 @app.before_request
@@ -363,7 +364,7 @@ def signup():
     token = generate_token(user["id"], user["email"])
     _track_session(user["id"], token)
     res = make_response(jsonify({"token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"]}}))
-    res.set_cookie("token", token, httponly=True, secure=True, max_age=72*3600, samesite="Strict")
+    res.set_cookie("token", token, httponly=True, secure=is_prod, max_age=72*3600, samesite="Lax")
     return res
 
 
@@ -398,7 +399,7 @@ def login():
     token = generate_token(user["id"], user["email"])
     _track_session(user["id"], token)
     res = make_response(jsonify({"token": token, "user": {"id": user["id"], "name": user["name"], "email": user["email"]}}))
-    res.set_cookie("token", token, httponly=True, secure=True, max_age=72*3600, samesite="Strict")
+    res.set_cookie("token", token, httponly=True, secure=is_prod, max_age=72*3600, samesite="Lax")
     return res
 
 
@@ -1005,18 +1006,28 @@ def google_login():
 
 @app.route("/auth/google/callback")
 def google_callback():
+    if request.args.get("error"):
+        error_desc = request.args.get("error_description") or request.args.get("error")
+        app.logger.warning(f"Google OAuth error returned: {error_desc}")
+        return redirect("/login?error=oauth_denied&msg=Google+sign-in+was+cancelled+or+denied.")
+
     redirect_uri = request.host_url.rstrip("/") + "/auth/google/callback"
     if not redirect_uri.startswith("https://") and "localhost" not in redirect_uri and "127.0.0.1" not in redirect_uri:
         redirect_uri = redirect_uri.replace("http://", "https://")
 
+    token = None
     try:
         # Pass redirect_uri explicitly for strict matching
         token = oauth.google.authorize_access_token(redirect_uri=redirect_uri)
     except Exception as e:
         app.logger.warning(f"Google authorize_access_token with redirect_uri failed: {e}. Trying without redirect_uri...")
-        token = oauth.google.authorize_access_token()
+        try:
+            token = oauth.google.authorize_access_token()
+        except Exception as e2:
+            app.logger.error(f"Google OAuth token exchange failed completely: {e2}")
+            return redirect("/login?error=oauth_failed&msg=Google+authentication+failed.+Please+try+again.")
 
-    userinfo = token.get("userinfo")
+    userinfo = token.get("userinfo") if token else None
     if not userinfo:
         try:
             userinfo = oauth.google.parse_id_token(token)
@@ -1026,20 +1037,17 @@ def google_callback():
 
     if not userinfo:
         try:
-            # Fallback to fetching userinfo from endpoint
-            resp = oauth.google.get("userinfo", token=token)
-            userinfo = resp.json()
+            userinfo = oauth.google.userinfo(token=token)
         except Exception as e:
-            app.logger.error(f"Failed to fetch userinfo from endpoint: {e}")
+            app.logger.error(f"Failed to fetch userinfo from Google endpoint: {e}")
             userinfo = None
 
     if not userinfo or "email" not in userinfo:
-        return redirect("/login?error=no_email")
+        return redirect("/login?error=no_email&msg=Could+not+retrieve+email+from+Google+account.")
 
     email = userinfo["email"].lower()
-    name  = userinfo.get("name", email.split("@")[0])
+    name  = userinfo.get("name") or email.split("@")[0]
     return _oauth_login_or_create(name, email)
-
 
 
 # ── GitHub OAuth ───────────────────────────────────────────────────
@@ -1052,36 +1060,56 @@ def github_login():
 
 @app.route("/auth/github/callback")
 def github_callback():
-    oauth.github.authorize_access_token()
-    resp  = oauth.github.get("user")
-    profile = resp.json()
-    # GitHub may not expose email publicly — fetch it separately
-    email = profile.get("email")
-    if not email:
-        emails_resp = oauth.github.get("user/emails")
-        for e in emails_resp.json():
-            if e.get("primary") and e.get("verified"):
-                email = e["email"]
-                break
-    if not email:
-        return redirect("/login?error=no_email")
-    name = profile.get("name") or profile.get("login", email.split("@")[0])
-    return _oauth_login_or_create(name, email.lower())
+    if request.args.get("error"):
+        error_desc = request.args.get("error_description") or request.args.get("error")
+        app.logger.warning(f"GitHub OAuth error returned: {error_desc}")
+        return redirect("/login?error=oauth_denied&msg=GitHub+sign-in+was+cancelled+or+denied.")
+
+    try:
+        oauth.github.authorize_access_token()
+        resp  = oauth.github.get("user")
+        profile = resp.json()
+        # GitHub may not expose email publicly — fetch it separately
+        email = profile.get("email")
+        if not email:
+            emails_resp = oauth.github.get("user/emails")
+            for e in emails_resp.json():
+                if e.get("primary") and e.get("verified"):
+                    email = e["email"]
+                    break
+        if not email:
+            return redirect("/login?error=no_email&msg=No+verified+email+found+on+GitHub+account.")
+        name = profile.get("name") or profile.get("login", email.split("@")[0])
+        return _oauth_login_or_create(name, email.lower())
+    except Exception as e:
+        app.logger.error(f"GitHub OAuth failed: {e}")
+        return redirect("/login?error=oauth_failed&msg=GitHub+sign-in+failed.+Please+try+again.")
 
 
 # ── Shared helper ──────────────────────────────────────────────────
 
 def _oauth_login_or_create(name: str, email: str):
     """Find or create user, set auth cookie, redirect to app."""
-    user = get_user_by_email(email)
-    if not user:
-        # Create account with a random unusable password
-        import secrets
-        user = create_user(name, email, hash_password(secrets.token_hex(32)))
-    token = generate_token(user["id"], user["email"])
-    res = make_response(redirect("/"))
-    res.set_cookie("token", token, httponly=True, secure=True, max_age=72*3600, samesite="Strict")
-    return res
+    try:
+        email = email.strip().lower()
+        user = get_user_by_email(email)
+        if not user:
+            # Create account with a random unusable password and email_verified=True
+            import secrets
+            user = create_user(name or email.split("@")[0], email, hash_password(secrets.token_hex(32)), email_verified=True)
+        else:
+            if not user.get("email_verified"):
+                mark_user_email_verified(user["id"])
+                user["email_verified"] = True
+
+        token = generate_token(user["id"], user["email"])
+        _track_session(user["id"], token)
+        res = make_response(redirect("/"))
+        res.set_cookie("token", token, httponly=True, secure=is_prod, max_age=72*3600, samesite="Lax")
+        return res
+    except Exception as e:
+        app.logger.exception(f"Error in _oauth_login_or_create: {e}")
+        return redirect("/login?error=oauth_failed&msg=Error+logging+in.+Please+try+again.")
 
 
 # ── Folders ────────────────────────────────────────────────────────

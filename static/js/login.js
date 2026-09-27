@@ -1,4 +1,4 @@
-﻿/* Lexara AI — Login JS */
+/* Lexara AI — Login JS */
 
 function switchTab(tab){
   const track = document.getElementById("tabTrack");
@@ -156,4 +156,19 @@ document.querySelectorAll(".field-input input").forEach(input=>{
   input.addEventListener("focus",()=>input.closest(".field-input").style.transform="scale(1.005)");
   input.addEventListener("blur",()=>input.closest(".field-input").style.transform="");
 });
+
+// Auto-display URL error or status parameter if present
+(function initUrlAlerts() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.has("error")) {
+    const err = params.get("error");
+    const msg = params.get("msg") || (err === "no_email" ? "No email address was provided by the account." : (err === "oauth_denied" ? "Sign-in was cancelled." : "Authentication failed. Please try again."));
+    showAlert(decodeURIComponent(msg.replace(/\+/g, " ")), "error");
+  } else if (params.has("verified")) {
+    showAlert("Email verified successfully! You may now sign in.", "success");
+  } else if (params.has("reset")) {
+    showAlert("Password reset successfully! Please sign in with your new password.", "success");
+  }
+})();
+
 
